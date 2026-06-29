@@ -1,0 +1,32 @@
+[
+  {
+    "text": "Problem",
+    "link": "/problem/reader-failures",
+    "activeMatch": "/problem/"
+  },
+  {
+    "text": "Spec",
+    "link": "/spec/reference",
+    "activeMatch": "/spec/"
+  },
+  {
+    "text": "Design",
+    "link": "/concept/approach",
+    "activeMatch": "/concept/"
+  },
+  {
+    "text": "Landscape",
+    "link": "/landscape/existing-tools",
+    "activeMatch": "/landscape/"
+  },
+  {
+    "text": "Decisions",
+    "link": "/decisions/0001-test-and-corpus-strategy",
+    "activeMatch": "/decisions/"
+  },
+  {
+    "text": "Appendix",
+    "link": "/appendix/lessons-learned",
+    "activeMatch": "/appendix/"
+  }
+]

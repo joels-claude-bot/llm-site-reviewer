@@ -1,0 +1,19 @@
+# devenv / direnv
+.devenv/
+.devenv.flake.nix
+.direnv/
+.envrc
+
+# node
+node_modules/
+
+# rspress build output
+docs-site/doc_build/
+docs-site/.rspress/
+
+# e2e scratch
+/tmp/e2e-*.log
+
+
+#joels stuff
+scratchpads

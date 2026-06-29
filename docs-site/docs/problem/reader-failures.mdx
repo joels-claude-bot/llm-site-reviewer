@@ -1,0 +1,44 @@
+---
+title: Reader failures
+---
+
+import ReviewedDocExample from '../../components/ReviewedDocExample';
+
+# Reader failures
+
+The goal is to catch documentation that passes the build but still fails the reader.
+
+A build can prove that files exist, Markdown compiled, and the site emitted HTML. It cannot prove
+that the rendered page is useful, truthful, or readable. This reviewer fills that gap by checking
+the page a visitor actually sees.
+
+## Example
+
+Here is a small docs page that could compile cleanly:
+
+<ReviewedDocExample />
+
+The page is readable enough to inspect, but a reviewer should still flag four problems:
+
+| Finding | Why it matters | Expected behaviour |
+|---|---|---|
+| The `airport-code guide` link is dead | A reader following setup instructions hits a 404 | Return a blocking finding. |
+| The Mermaid diagram is raw source | The docs promise a flow diagram, but the reader gets code | Report from the rendered page screenshot. |
+| `GDS` and `PNR` are unexplained | A newcomer cannot follow the travel-agent example without guessing domain terms | Report as a clarity issue. |
+| The request asks for June 2026, but the booking card shows 12 July 2026 | The visible evidence contradicts the instruction | Report as a mismatch between text and rendered evidence. |
+
+## Why This Tool Exists
+
+Most docs tooling stops too early. Link checkers catch dead URLs. Build tools catch invalid syntax.
+Neither one can say, "the screenshot below contradicts the sentence above" or "this diagram compiled
+as text instead of rendering as a diagram."
+
+The reviewer should be cheap where certainty is possible and careful where judgment is needed:
+
+| Check | Best tool | Result |
+|---|---|---|
+| Internal links, anchors, missing images, obvious dead URLs | Mechanical check | Blocking finding |
+| Soft-404 pages, unclear acronyms, stale references | Text extraction plus model judgment where needed | Report finding |
+| Broken diagrams, unreadable layout, screenshot/text mismatch | Browser screenshots plus vision judgment | Report finding |
+
+The implementation details live in the [category reference](/spec/reference) and [test corpus](/spec/test-corpus).
