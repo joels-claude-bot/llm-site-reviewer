@@ -28,6 +28,24 @@ docs-preview:
 docs-install:
     cd {{docs_dir}} && npm install
 
+# --- the reviewer (Go) ---
+
+# run the Go test suite (corpus validation, and passes as they land)
+test:
+    go test ./...
+
+# regenerate the navigable corpus page from the corpus/ fixtures
+gen-corpus:
+    go run ./cmd/corpusdocs
+
+# print what the corpus pipeline produced (the glue assertions don't show)
+inspect:
+    go run ./cmd/inspect
+
+# generated map: every package with its one-line purpose (expand one with `go doc <path>`)
+map:
+    @go list -f '{{.ImportPath}}: {{.Doc}}' ./...
+
 # --- the reviewer's own passes, dogfooded against these docs ---
 
 # deterministic link + anchor check over the built docs (needs lychee from devenv)

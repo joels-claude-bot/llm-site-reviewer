@@ -43,10 +43,15 @@ A unit test pins one function with literal values written in the test file. A fi
 
 ### Unit test: one function, exact
 
-```python
-def test_parse_verdict_flags_unexplained_acronym():
-    raw = '{"unexplained": true, "term": "GDS"}'
-    assert parse_verdict(raw) == Finding("ACRONYM_UNEXPANDED", term="GDS")
+```go
+func TestParseVerdictFlagsUnexplainedAcronym(t *testing.T) {
+	raw := `{"unexplained": true, "term": "GDS"}`
+	got := ParseVerdict(raw)
+	want := Finding{Category: AcronymUnexpanded, Where: "GDS"}
+	if got != want {
+		t.Errorf("ParseVerdict(%q) = %+v, want %+v", raw, got, want)
+	}
+}
 ```
 
 Literal in, literal out, no LLM. This is the bulk of the suite. (A `Finding` is one reported defect: its category and where on the page it sits.)
@@ -55,11 +60,21 @@ Literal in, literal out, no LLM. This is the bulk of the suite. (A `Finding` is 
 
 Some functions return text that is annoying to type out by hand but always the same for the same input. The report formatter is the example. Instead of writing the expected output into the test, you run the function once, look at what it produced, and if it reads right you save it to a file. After that the test just checks the output still matches that file. When you change the formatter on purpose, you read the diff and re-save.
 
-```python
-def test_report_format(snapshot):
-    findings = [Finding("BROKEN_INTERNAL_LINK", location="trip.mdx:7")]
-    assert format_report(findings) == snapshot   # pytest --snapshot-update to re-bless
+```go
+func TestFormatReport(t *testing.T) {
+	report := FormatReport([]Finding{{Category: BrokenInternalLink, Where: "trip.md:7", Result: Blocking}})
+	golden := "testdata/report.golden"
+	if *update { // go test -run TestFormatReport -update  re-blesses the file
+		os.WriteFile(golden, []byte(report), 0o644)
+	}
+	want, _ := os.ReadFile(golden)
+	if report != string(want) {
+		t.Errorf("report changed; rerun with -update if that was intended")
+	}
+}
 ```
+
+For short output, a Go `Example` function with an `// Output:` comment does the same job and shows up in the package docs as usage. Golden files suit longer output that you would rather keep in a file than inline.
 
 :::tip This is not the visual review
 Snapshot here means saving a function's text output to a file. It has nothing to do with screenshots or the LLM looking at a page. The visual review uses a separate screenshot baseline, a different thing with a confusingly similar name. See the absolute vs regression note in [approach](/concept/approach).
@@ -96,16 +111,16 @@ Two uses, and neither is a normal pass/fail test.
 
 The first is an end-to-end script: run the whole reviewer on one real page to watch it work, the way `scripts/e2e-docs.sh` already does. Useful when a function gets complicated and you want to see real behaviour, not a green dot.
 
-The second is for functions with no single correct output, like a `pretty_format_yaml()` that just has to look reasonable. You cannot assert that, so you run it and read the result yourself.
+The second is when you are in the weeds and just want to *see* what a function produced. `go run ./cmd/inspect <file>` runs the loader and prints the parse; it asserts nothing. The same thing written as a Go `Example` function runs under `go test` and shows up in the package docs as usage.
 
-Both double as smoke tests. The suite runs them so a crash shows up, even though it does not check their exact output. They are the bridge between the docs and the tests: something you run to understand the tool, that also fails loudly if it breaks.
+The useful part is how these graduate. You print, you eyeball, and the moment the output looks right you add an `// Output:` line (or save a golden file) and the eyeball check becomes a regression test. You do not pick assertion-or-not upfront; the sniff test and the assertion are the same artifact at different stages. Both also double as smoke tests, since the suite runs them and a crash shows up even when the exact output is not checked.
 
 | Layer | The example above | Calls the LLM? | Gates the build? |
 |---|---|---|---|
-| Unit | `parse_verdict` assertion | no | yes |
-| Snapshot | `format_report` saved output | no | yes |
-| Corpus | `broken-internal.mdx` + `.expect.json` | only here | provable yes, LLM no |
-| Runnable example | `e2e-docs.sh`, `pretty_format_yaml()` | no | runs without error |
+| Unit | `ParseVerdict` assertion | no | yes |
+| Snapshot | `FormatReport` golden file | no | yes |
+| Corpus | `broken-internal.md` frontmatter | only here | provable yes, LLM no |
+| Runnable example | `cmd/inspect`, `ExampleParse` | no | runs without error |
 
 ## Why this kills the maintenance fear
 
@@ -152,7 +167,7 @@ The runnable examples sit apart from all of that. They are not graded. They are 
 ```mermaid
 flowchart TD
     You[You, by hand] --> S1["e2e script:<br/>run the tool on a real page"]
-    You --> S2["eyeball check:<br/>read pretty_format_yaml() output"]
+    You --> S2["eyeball check:<br/>go run ./cmd/inspect, read the output"]
     classDef plain fill:#eef2f7,color:#0f172a,stroke:#94a3b8
     class S1,S2 plain
 ```

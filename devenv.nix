@@ -12,12 +12,16 @@
     pkgs.lsof       # port preflight
   ];
 
-  # Node 22 for both the docs site (Rspress) and the eventual TypeScript CLI.
+  # Node 22 powers the docs site (Rspress, .ts config + .tsx components).
   languages.javascript = {
     enable = true;
     package = pkgs.nodejs_22;
   };
   languages.typescript.enable = true;
+
+  # The reviewer itself is written in Go: static types and explicit errors are
+  # the constraints that keep an LLM-assisted codebase maintainable (see ADR 0001).
+  languages.go.enable = true;
 
   # Playwright on NixOS: never let it download its own browsers (the prebuilt binaries
   # won't run against the Nix dynamic linker). Point it at the Nix-built browsers instead.
@@ -28,6 +32,7 @@
   enterShell = ''
     echo "llm-site-reviewer devenv"
     echo "  node    $(node --version)"
+    echo "  go      $(go version 2>/dev/null | cut -d' ' -f3)"
     echo "  lychee  $(lychee --version 2>/dev/null | head -1)"
     echo "  vale    $(vale --version 2>/dev/null)"
     echo "  just    $(just --version)"
