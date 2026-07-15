@@ -145,7 +145,7 @@ Your LLM code is two readable things: the prompt you send and the parser that re
 
 ## The corpus has two roles, do not confuse them
 
-The [worked example](/spec/worked-example) is busy on purpose. It packs many defects into one realistic page so a person can see what the tool is for. The real corpus is the opposite: many small pages, one defect each, so a miss points at one cause.
+The [worked example](/concept/worked-example) is busy on purpose. It packs many defects into one realistic page so a person can see what the tool is for. The real corpus is the opposite: many small pages, one defect each, so a miss points at one cause.
 
 ```mermaid
 flowchart TD

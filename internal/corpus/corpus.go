@@ -48,9 +48,10 @@ type matter struct {
 	} `yaml:"expect"`
 }
 
-// Parse decodes one fixture file's bytes into a Fixture. It is pure (no
-// filesystem, no globals), so it is tested with literal strings. It leaves Path
-// and Category for Load to fill in, and leaves rule-checking to Validate.
+// Parse decodes one fixture's bytes into a Fixture. Pure, so tested with literal
+// strings. Load fills in Path and Category; Validate does the rule-checking.
+//
+//arch:pure
 func Parse(content []byte) (Fixture, error) {
 	var m matter
 	body, err := frontmatter.Parse(bytes.NewReader(content), &m)
@@ -73,11 +74,11 @@ func Parse(content []byte) (Fixture, error) {
 	return fixture, nil
 }
 
-// Validate checks one fixture against the corpus rules and returns the first
-// problem it finds. It is pure, so each rule is unit-tested directly. A fixture
-// must have a title; every expectation must name a known category, a valid
-// result, and a location; and a look-alike (no expectations) is allowed only
-// for an ok-* file.
+// Validate returns the first corpus rule a fixture breaks, or nil. The rules: it
+// needs a title; every expectation needs a known category, a valid result, and a
+// 'where'; and only ok-* files may expect nothing.
+//
+//arch:pure
 func Validate(fixture Fixture) error {
 	if fixture.Title == "" {
 		return fmt.Errorf("missing frontmatter title")
@@ -103,9 +104,10 @@ func Validate(fixture Fixture) error {
 	return nil
 }
 
-// Load reads and parses every fixture under root. It is the only part that
-// reads the disk: it walks the tree, reads each file, and hands the bytes to
-// Parse. It does not validate, so callers can load without rule-checking.
+// Load reads and parses every fixture under root. It does not validate, so
+// callers can load without rule-checking.
+//
+//arch:io
 func Load(root string) ([]Fixture, error) {
 	paths, err := FixturePaths(root)
 	if err != nil {
@@ -131,9 +133,11 @@ func Load(root string) ([]Fixture, error) {
 	return fixtures, nil
 }
 
-// FixturePaths returns every fixture file under root, sorted so the output is
-// stable. Each immediate subdirectory is a category. It skips index.md, which
-// is not a test case; index.md only links the other pages so an orphan shows up.
+// FixturePaths returns every category/*.md fixture under root, sorted. It skips
+// index.md, which isn't a test case: it only links the other pages so an
+// orphaned page shows up.
+//
+//arch:io
 func FixturePaths(root string) ([]string, error) {
 	dirs, err := os.ReadDir(root)
 	if err != nil {

@@ -53,7 +53,6 @@ check "/concept/passes.html"       "viewport-segmented"
 check "/concept/exit-codes.html"   "Block the merge"
 check "/landscape/existing-tools.html" "wrap, don't rebuild"
 check "/spec/catch-categories.html"    "MUST NOT CATCH"
-check "/spec/test-corpus.html"         "two-sided"
 
 echo
 if [[ "$FAILED" -eq 0 ]]; then

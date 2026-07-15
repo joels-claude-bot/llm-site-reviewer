@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="150" viewBox="0 0 480 150" font-family="system-ui, sans-serif">
+  <rect width="480" height="150" fill="#f7f7f7"/>
+  <text x="12" y="18" font-size="11" font-weight="bold" fill="#333">Airport to hotel transfer route</text>
+  <line x1="30" y1="80" x2="450" y2="80" stroke="#8899aa" stroke-width="1"/>
+  <!-- Every stop label is set at font-size 4, far too small to read: a TEXT_LEGIBILITY defect. -->
+  <g fill="#c0392b"><circle cx="30" cy="80" r="4"/><circle cx="100" cy="80" r="4"/><circle cx="170" cy="80" r="4"/><circle cx="240" cy="80" r="4"/><circle cx="310" cy="80" r="4"/><circle cx="380" cy="80" r="4"/><circle cx="450" cy="80" r="4"/></g>
+  <g font-size="4" fill="#222">
+    <text x="18" y="70">LIS Terminal 1 arrivals hall, meet driver at desk 4</text>
+    <text x="90" y="96">A1 motorway northbound, toll gate, keep left lane</text>
+    <text x="158" y="70">Coimbra bypass, fuel stop, 25 min rest break here</text>
+    <text x="228" y="96">Regional road N17 into the mountains, hairpin bends</text>
+    <text x="298" y="70">Seia town centre, last shop before the lodge road</text>
+    <text x="368" y="96">Serra da Estrela park gate, permit checked on entry</text>
+    <text x="430" y="70">Mountain Lodge, final ascent, arrive approx 8h later</text>
+  </g>
+</svg>

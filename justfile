@@ -3,8 +3,7 @@
 
 set shell := ["bash", "-uc"]
 
-docs_dir  := "docs-site"
-docs_port := "9811"
+docs_dir := "docs-site"
 
 # list recipes
 default:
@@ -12,21 +11,17 @@ default:
 
 # --- docs site (Rspress / MDX) ---
 
-# live dev server: hot reload + working search, on :9811
-docs-dev: preflight
-    cd {{docs_dir}} && npm run dev
-
 # build docs to docs-site/doc_build (strict dead-link check fails the build)
 docs-build:
-    cd {{docs_dir}} && npm run build
+    cd {{ docs_dir }} && npm run build
 
 # serve the built docs on :9811
 docs-preview:
-    cd {{docs_dir}} && npm run preview
+    cd {{ docs_dir }} && npm run preview
 
 # install docs deps
 docs-install:
-    cd {{docs_dir}} && npm install
+    cd {{ docs_dir }} && npm install
 
 # --- the reviewer (Go) ---
 
@@ -34,27 +29,40 @@ docs-install:
 test:
     go test ./...
 
+# per-function coverage: the "every function is tested or demonstrated" check.
+# Only main() should read 0% (a trivial wrapper around a covered run).
+cover:
+    @go test ./internal/... ./cmd/... -coverpkg=./internal/...,./cmd/... -coverprofile=/tmp/lsr-cover.out >/dev/null
+    @go tool cover -func=/tmp/lsr-cover.out
+
 # regenerate the navigable corpus page from the corpus/ fixtures
 gen-corpus:
     go run ./cmd/corpusdocs
 
-# print what the corpus pipeline produced (the glue assertions don't show)
-inspect:
-    go run ./cmd/inspect
+# regenerate the category reference page from internal/finding.Catalog
+gen-reference:
+    go run ./cmd/refdocs
 
-# generated map: every package with its one-line purpose (expand one with `go doc <path>`)
-map:
-    @go list -f '{{.ImportPath}}: {{.Doc}}' ./...
+# regenerate every source-derived docs page
+gen: gen-corpus gen-reference
+
+# print what the corpus pipeline produced (the glue assertions don't show)
+inspect *flags:
+    go run ./cmd/inspect {{ flags }}
+
+# architecture map by role, from //arch: tags in the source (real file:line links)
+codemap:
+    @go run ./cmd/codemap
 
 # --- the reviewer's own passes, dogfooded against these docs ---
 
 # deterministic link + anchor check over the built docs (needs lychee from devenv)
 links: docs-build
-    lychee --no-progress --include-fragments '{{docs_dir}}/doc_build/**/*.html'
+    lychee --no-progress --include-fragments '{{ docs_dir }}/doc_build/**/*.html'
 
 # prose / acronym lint (needs vale from devenv)
 prose:
-    vale {{docs_dir}}/docs || true
+    vale {{ docs_dir }}/docs || true
 
 # everything a CI gate would run
 check: docs-build links
@@ -65,8 +73,5 @@ check: docs-build links
 e2e:
     bash scripts/e2e-docs.sh
 
-# --- meta ---
-
-# fail loudly if the docs port is already held (prints the holder)
-preflight:
-    @if lsof -i :{{docs_port}} >/dev/null 2>&1; then echo "port {{docs_port}} in use:"; lsof -i :{{docs_port}}; exit 1; else echo "port {{docs_port}} free"; fi
+testie:
+    go run ./cmd/testsite -dir testie -port 9699

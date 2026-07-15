@@ -30,8 +30,8 @@ wrong*. CI should treat them differently — `1` is a content author's problem, 
 
 Only the **deterministic** passes contribute to exit code `1`. The LLM passes (visual judgment,
 soft-404 tier-3) produce findings but **do not** fail CI on their own, because they're
-non-deterministic — see [Test corpus](/spec/test-corpus) for why hard-gating on a stochastic verdict
-is a mistake. They surface as report output a human reviews.
+non-deterministic, and hard-gating on a stochastic verdict is a mistake. They surface as report
+output a human reviews.
 
 ```mermaid
 graph TD

@@ -16,4 +16,6 @@
 // Every pass returns finding.Finding values, so review does not care how a pass
 // reached its answer. The test side feeds the same passes a known corpus and
 // compares their findings against the Fixture answers corpus.Load produced.
+//
+//arch:spine
 package review

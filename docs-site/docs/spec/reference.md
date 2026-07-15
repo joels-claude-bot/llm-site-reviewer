@@ -1,78 +1,64 @@
 ---
-title: Category reference
+title: Categorisation
 ---
 
 # Category reference
 
-This is the machine-readable list behind [Reader failures](/problem/reader-failures).
+The failure taxonomy behind [Reader failures](/problem/reader-failures): every kind of defect the
+reviewer can report
 
-Every category carries two decisions, and together they are the contract the
-[design](/concept/approach) has to honour:
+> Failure taxonomy is very 🤖 - ELI5 is more like "how do we classify" this. E.g. alarm broken taxonomy, just classifying it into "failure mode": "loss of function", "detection method": "user observed" etc
 
-- **How checked:** mechanical, text review, or screenshot review.
-- **Default result:** blocking finding or review finding.
+Categories are simply a fixed name for a type of error flagged by the review of a document.
 
-:::tip The checkability rule
-If a tool can prove the answer exactly, a tool proves it — it never goes to a model. A model is
-spent only on the categories marked *text review* or *screenshot review*, where the answer needs
-judgment. The `How checked` column below is where that decision is recorded for each category.
-:::
+We also *use deterministic checks* (`Mechanical`) where we can - as its more reliable that using an LLM model - e.g. for internal broken links with markdown
 
-## Links
+This leads to a fundamental categorisation of problems:
+- `Mechanical`, from deterministic scripts (e.g. "does this file exist,  yes or no => pass/fail")
+- `Cognitive`, from a human/model (e.g. "does this chart look rendered properly => pass/fail")
 
-| Category | Example | How checked | Default result |
-|---|---|---|---|
-| `BROKEN_INTERNAL_LINK` | link points to `/setup`, but no `/setup` page exists | Mechanical | Blocking |
-| `BROKEN_ANCHOR` | `guide#instal` but the page has `#install` | Mechanical | Blocking |
-| `MISSING_IMAGE` | `![](/img/arch.png)` but the image is missing | Mechanical | Blocking |
-| `BROKEN_EXTERNAL_LINK` | external page returns 404 | Mechanical | Blocking |
-| `SOFT_404` | page returns 200 but title says "Page not found" | Text review | Review |
-| `ORPHANED_PAGE` | page exists but no nav/page links to it | Mechanical | Blocking |
 
-## Rendering
+## The full list
 
-| Category | Example | How checked | Default result |
-|---|---|---|---|
-| `RENDERED_BROKEN` | Mermaid source appears instead of a diagram | Screenshot review | Review |
-| `DIAGRAM_SYNTAX_ERROR` | diagram renders an error box | Screenshot review | Review |
-| `TRUNCATION` | page cuts off mid-section | Screenshot review | Review |
-| `TEXT_LEGIBILITY` | diagram text is too small to read | Screenshot review | Review |
-| `FLAT_COLOUR` | page is a grey wall with no visual hierarchy | Screenshot review | Review |
-| `WEAK_HIERARCHY` | scan cannot tell what matters most | Screenshot review | Review |
-| `HIGH_DENSITY` | huge table or unbroken prose block | Screenshot review | Review |
+Every category, its example, and how it is checked lives on one page — the
+**[category table](/spec/categories)**.
 
-## Clarity
+That page is generated straight from `internal/finding.Catalog` in the Go source, so it can never
+drift from the code. This page is the human explanation; that page is the machine-readable list.
 
-| Category | Example | How checked | Default result |
-|---|---|---|---|
-| `ACRONYM_UNEXPANDED` | `GDS` appears with no explanation | Text review | Review |
-| `ASSUMED_JARGON` | "send it through the GDS" with no context | Text review | Review |
-| `MISSING_WHAT_WHY` | page starts with commands before saying what they are for | Text review | Review |
-| `MISSING_DOES_NOT` | page never states what it does not cover | Text review | Review |
-| `SIMPLER` | complex prose that should be a table or short example | Text review | Review |
 
-## Mismatch
 
-| Category | Example | How checked | Default result |
-|---|---|---|---|
-| `STALE_REF` | docs name `process_frame()`, but the repo has no such function | Mechanical | Blocking |
-| `WRONG_CLAIM` | docs say timeout is 30 seconds, code sets 60 | Text review | Review |
-| `CONTRADICTS_PAGE` | page A says default on, page B says default off | Text review | Review |
-| `INCONSISTENT_TERM` | same thing is called `doc_build`, `build dir`, and `output/` | Text review | Review |
-| `BREAKS_STANDARD` | style guide says expand acronyms; page does not | Text review | Review |
-| `UNVERIFIABLE` | claim cannot be checked from available context | Text review | Review |
-| `IMAGE_MISMATCH` | text asks for June 2026; screenshot shows July 2026 | Screenshot review | Review |
+## Generation
 
-## Look-Alikes To Ignore
+The list is generated as follows:
 
-These are not defects:
+```mermaid
+graph TD
+  A[Command\n`just-reference`] --> B[pls]
+```
 
-| Looks suspicious | Why to ignore it |
-|---|---|
-| `https://example.com` inside a code block | It is example code, not a docs link |
-| `ntfy.sh/your-topic` inside a shell snippet | Placeholder value for a user to replace |
-| `# TODO` in an explicit stub section | Known incomplete work, not a new finding |
-| acronym defined in a glossary | The reader already has the context |
-| intentional 404 page in an error-handling guide | The 404 is the example |
+## Appendix
+Claude 🤖 initially added categories for broken links - but this is out the scope of this project, plenty of tools do this (and do it better) than I can.
 
-See [Example tests](/spec/test-corpus) for how these become test cases.
+Also, they *should* be caught by the builder used for the documentation. The option to set to catch broken links for the most common documentation builders are shown below
+
+mkdocs configuration is [here](https://www.mkdocs.org/user-guide/configuration/) - it has no anchors to specific configuration options
+
+- for rspress, the `checkDeadLinks` option [here](https://rspress.rs/guide/use-mdx/link#dead-links-checking) 
+- for rspress, the `checkAnchors` option [here](https://rspress.rs/api/config/config-build#markdownlinkcheckanchors)
+- for mkdocs, `validation => links => not_found` for broken refs
+- for mkdocs, `validation => links => anchors` for broken anchors
+- for mkdocs, `validation => nav => validation.nav.omitted_files` for missing files
+
+| Category | Example | How checked |
+|---------|---------|---------|
+| `BROKEN_INTERNAL_LINK` | link points to `/setup`, but no `/setup` page exists | Mechanical |
+| `BROKEN_ANCHOR` | `guide#instal` but the page has `#install` | Mechanical |
+| `MISSING_IMAGE` | `![](/img/arch.png)` but the image is missing | Mechanical |
+| `BROKEN_EXTERNAL_LINK` | external page returns 404 | Mechanical |
+| `ORPHANED_PAGE` | page exists but no nav/page links to it | Mechanical |
+
+
+
+## Future work
+Possible future work is implementation a system of hard blocks on link failures vs soft blocks for review ("this might be broken im not sure") - thus every categorisation is treated as a "failure"

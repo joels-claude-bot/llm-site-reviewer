@@ -5,11 +5,18 @@ import (
 	"testing"
 )
 
-// TestInspectTreeRuns is the smoke test for the inspector itself: the dump is
-// not asserted, but it must run without error against the real corpus, so it
-// cannot quietly break. It writes to io.Discard to stay quiet during the suite.
-func TestInspectTreeRuns(t *testing.T) {
-	if err := inspectTree(io.Discard, "../../corpus"); err != nil {
+// run dispatches to inspectTree or inspectFile depending on the target. These
+// two smoke tests cover both branches (and printFixture underneath), against the
+// real corpus, writing to io.Discard to stay quiet.
+
+func TestRunOnDirectory(t *testing.T) {
+	if err := run(io.Discard, "../../corpus"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRunOnSingleFile(t *testing.T) {
+	if err := run(io.Discard, "../../corpus/links/broken-internal.md"); err != nil {
 		t.Fatal(err)
 	}
 }

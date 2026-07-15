@@ -1,0 +1,97 @@
+---
+title: How it fits together
+---
+
+import CodeTree from '../../components/CodeTree';
+import Pipeline from '../../components/Pipeline';
+
+# How it fits together
+
+:::info TL;DR
+The design pages describe the model — the [spec](/problem/reader-failures) (what to catch), the
+[approach](/concept/approach) (one engine per question), the passes (the shape). The code is the
+level below. **This page is the bridge**: two interactive views, both linking straight into the
+source, so you can see where each idea lives and where the data goes — then click through to the
+line that does it.
+:::
+
+## The pipeline: where the data goes
+
+This is the whole tool in one picture, taken straight from
+[`internal/review/doc.go`](https://github.com/joels-claude-bot/llm-site-reviewer/blob/main/internal/review/doc.go).
+Read it as a flowchart: each lane has a **▶ start** chip naming the file that kicks it off, then the
+data flows left to right. Two lanes share one vocabulary. The **test side** is built; the **runtime
+side** is mostly a documented stub.
+
+Hover any box and the panel below shows three things: what **kind** of Go thing it is (package, type,
+func, directory, or input), its **role** in the flow, and its real **doc comment** lifted verbatim from
+the source. Click a box to open that code on GitHub.
+
+:::note One package, three things
+The box at the bottom is the **`finding` package** — a directory of Go files, not a single symbol.
+The same file defines the [`finding.Finding`](https://github.com/joels-claude-bot/llm-site-reviewer/blob/main/internal/finding/finding.go#L64)
+type (one defect), the [`finding.Category`](https://github.com/joels-claude-bot/llm-site-reviewer/blob/main/internal/finding/finding.go#L23)
+list (25 codes), and `finding.Result` (blocking vs report). When a box in the lanes says
+`[]finding.Finding`, that is the *type*; the shared box is the whole *package*.
+:::
+
+<Pipeline />
+
+Read it as two sentences:
+
+- **Test side (built):** the fixture pages under `corpus/` are loaded into the findings we *expect*
+  from them, so we have answers to assert against.
+- **Runtime side (the goal):** a real built site is run through the passes, which report the findings
+  they *saw*, formatted into output.
+
+Both sides produce [`finding.Finding`](https://github.com/joels-claude-bot/llm-site-reviewer/blob/main/internal/finding/finding.go)
+values. That shared type is the join: the test side can line a pass's findings up against a fixture's
+expected findings without either side knowing how the other reached its answer.
+
+## The code: where each idea lives
+
+The same picture as a file tree. Click a folder to open it; each symbol jumps to its line on GitHub.
+Colours match the pipeline — <span style={{color:'#2563eb',fontWeight:600}}>vocabulary</span>,
+<span style={{color:'#16a34a',fontWeight:600}}>test side</span>,
+<span style={{color:'#7c3aed',fontWeight:600}}>spine</span>,
+<span style={{color:'#64748b',fontWeight:600}}>tooling</span>,
+<span style={{color:'#d97706',fontWeight:600}}>data</span>.
+
+<CodeTree />
+
+Three things to notice:
+
+- **`finding/` is the hub.** Every package imports it; it imports none of them. It is the one
+  word-list the whole tool agrees on.
+- **`review/` is the spine, and it is a stub.** Reading that one file is the fastest way to see the
+  runtime flow before the passes exist — which is why the pipeline above is drawn from its doc comment.
+- **`cmd/` is not the tool.** The three commands are just windows onto the library:
+  [`inspect`](https://github.com/joels-claude-bot/llm-site-reviewer/blob/main/cmd/inspect/main.go)
+  dumps the corpus pipeline so you can eyeball it,
+  [`codemap`](https://github.com/joels-claude-bot/llm-site-reviewer/blob/main/cmd/codemap/main.go)
+  prints this map from the `//arch:` tags, and
+  [`corpusdocs`](https://github.com/joels-claude-bot/llm-site-reviewer/blob/main/cmd/corpusdocs/main.go)
+  generates the [corpus page](/spec/corpus).
+
+## Where each design idea lives
+
+The bridge from the design pages (the model) back to the code, one row each.
+
+| In the design | In the code |
+|---|---|
+| Failure taxonomy, from the [reference](/spec/reference) | the [`finding.Category`](https://github.com/joels-claude-bot/llm-site-reviewer/blob/main/internal/finding/finding.go#L23) constants (25 codes) |
+| One engine per question, from the [approach](/concept/approach) | the deterministic vs model split across the passes (`links.Check` vs `render.Check`) — not built |
+| The passes, the shape | [`review.Review`](https://github.com/joels-claude-bot/llm-site-reviewer/blob/main/internal/review/doc.go#L21) plus a package per pass — not built |
+| The example corpus, from the [corpus](/spec/corpus) | the [`corpus/`](https://github.com/joels-claude-bot/llm-site-reviewer/tree/main/corpus) directory and [`corpus.Load`](https://github.com/joels-claude-bot/llm-site-reviewer/blob/main/internal/corpus/corpus.go#L115) |
+
+## Why it is built this way
+
+:::tip This page should generate itself
+Both views above are hand-authored today — including every doc comment shown in the hover panel, which
+is copied by hand from the Go source. But every box already exists as a `//arch:` tag on the real
+symbol, and [`codemap`](https://github.com/joels-claude-bot/llm-site-reviewer/blob/main/cmd/codemap/main.go)
+already reads those tags. The next step is for `codemap` to also **extract the doc comment sitting above
+each tagged symbol** and emit this tree and pipeline directly — boxes, roles, and docstrings all pulled
+from source — so the map can never fall out of step with the code. The same tag-reader is what the
+reviewer's `STALE_REF` pass will use to tell whether a documented function still exists.
+:::

@@ -2,3 +2,5 @@
 # api/static-preview = 9810 (the tool's static server for Playwright — not built yet)
 # docs (Rspress) = 9811
 docs = 9811
+# testie demo site (served by cmd/testsite): base = 9000 + CRC32("testie") % 900 = 9698
+testie = 9699
