@@ -5,11 +5,12 @@
 
   # Tools the reviewer's passes shell out to (see docs: /landscape/existing-tools).
   packages = [
-    pkgs.lychee     # deterministic internal/external link + anchor checker (never an LLM)
-    pkgs.vale       # prose / acronym linter for the content pass
-    pkgs.chromium   # headful browser the visual pass drives
-    pkgs.just       # task runner (mirrors the justfile)
-    pkgs.lsof       # port preflight
+    pkgs.lychee # deterministic internal/external link + anchor checker (never an LLM)
+    pkgs.vale # prose / acronym linter for the content pass
+    pkgs.chromium # headful browser the visual pass drives
+    pkgs.just # task runner (mirrors the justfile)
+    pkgs.lsof # port preflight
+    pkgs.librsvg
   ];
 
   # Node 22 powers the docs site (Rspress, .ts config + .tsx components).

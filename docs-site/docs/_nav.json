@@ -20,11 +20,6 @@
     "activeMatch": "/landscape/"
   },
   {
-    "text": "Decisions",
-    "link": "/decisions/0001-test-and-corpus-strategy",
-    "activeMatch": "/decisions/"
-  },
-  {
     "text": "Appendix",
     "link": "/appendix/lessons-learned",
     "activeMatch": "/appendix/"

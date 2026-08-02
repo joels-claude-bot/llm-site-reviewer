@@ -11,13 +11,11 @@ default:
 
 # --- docs site (Rspress / MDX) ---
 
-# build docs to docs-site/doc_build (strict dead-link check fails the build)
 docs-build:
     cd {{ docs_dir }} && npm run build
 
-# serve the built docs on :9811
-docs-preview:
-    cd {{ docs_dir }} && npm run preview
+docs-dev:
+    cd {{ docs_dir }} && npm run dev
 
 # install docs deps
 docs-install:
