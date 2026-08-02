@@ -97,7 +97,7 @@ A grouping tag (`role=pure`) is safe — it describes one symbol in place. A gra
 - **Hand-tagged** (`@ct graph edge=a->b`) — flexible, works in any language, expresses logical links the compiler cannot see. But the comment rots the moment the code's real dependency changes and the tag does not.
 - **Derived from the code** — for Go we already walk the AST in [`codemap`](/concept/code-map); real import and call edges come for free and cannot drift, because the graph *is* the code.
 
-Leaning toward derived-first, with hand-tags only for logical edges the code cannot express — the same reason [golden files](/decisions/0001-test-and-corpus-strategy) beat hand-written expectations. This choice sets what Pass A's lint must check (endpoint resolution) and how Pass B builds the graph, so it is the next thing to settle.
+Leaning toward derived-first, with hand-tags only for logical edges the code cannot express — the same reason [golden files](/appendix/decisions/0001-test-and-corpus-strategy) beat hand-written expectations. This choice sets what Pass A's lint must check (endpoint resolution) and how Pass B builds the graph, so it is the next thing to settle.
 :::
 
 ## Consequences

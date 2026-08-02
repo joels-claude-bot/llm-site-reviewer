@@ -15,9 +15,7 @@ window before the OTA cutoff, and any schedule change will trigger an ADM.
 
 ## Hotel
 
-We have reserved rooms at the **Serra da Estrela Mountain Lodge**, a scenic 8-hour drive
-inland from Lisbon airport, high up in the mountains. The views are excellent and the
-nightly rate is well within budget.
+We have reserved rooms at the **Serra da Estrela Mountain Lodge** - get there by driving
 
 ## Airport transfer
 

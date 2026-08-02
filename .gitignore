@@ -15,5 +15,11 @@ docs-site/.rspress/
 /tmp/e2e-*.log
 
 
+# generated files
+generated
+
 #joels stuff
 scratchpads
+
+# env
+.env
