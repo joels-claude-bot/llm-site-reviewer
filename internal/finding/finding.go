@@ -1,6 +1,6 @@
 // Package finding defines a reported defect (its category, where it sits, and
-// its result) and holds Catalog, the source of truth that the generated category
-// reference and the known-category set both derive from.
+// its result) and holds Catalog, the source of truth the generated category
+// reference is derived from.
 //
 //arch:types
 package finding
@@ -14,11 +14,15 @@ type Finding struct {
 }
 
 // Category is one defect type from the spec's category reference.
+//
+// TODO: the LLM's response is not yet constrained to these codes. Bake Catalog
+// into the response schema as an enum, or validate the returned Category against
+// it on parse, so a hallucinated code is rejected instead of stored as-is.
 type Category string
 
 // The full set, grouped as in the reference. Each also has a row in Catalog
 // (below), the source of truth the docs page and known set derive from, so a
-// typo or renamed code fails loudly in the corpus test instead of drifting.
+// typo or renamed code fails loudly in the tests instead of drifting.
 const (
 	// Links.
 	BrokenInternalLink Category = "BROKEN_INTERNAL_LINK"
@@ -54,24 +58,8 @@ const (
 	ImageMismatch    Category = "IMAGE_MISMATCH"
 )
 
-// Known reports whether c is a category from the reference.
-func (c Category) Known() bool {
-	_, ok := known[c]
-	return ok
-}
-
-// known is derived from Catalog (below) so there's one list, not two: a category
-// is Known once it's in Catalog.
-var known = func() map[Category]struct{} {
-	set := make(map[Category]struct{}, len(Catalog))
-	for _, meta := range Catalog {
-		set[meta.Code] = struct{}{}
-	}
-	return set
-}()
-
 // Result is what happens when a finding is raised. For now every category is
-// Blocking; Report is kept for the corpus and future non-blocking findings.
+// Blocking; Report is kept for future non-blocking findings.
 type Result string
 
 const (
@@ -118,7 +106,7 @@ type Meta struct {
 
 // Catalog is every category in reference order. It reuses the typed constants
 // above, so the code API and the docs can't end up with different codes.
-// cmd/refdocs generates docs-site/docs/spec/categories.md from Catalog, HowKinds,
+// cmd/gencategories generates docs-site/docs/spec/categories.md from Catalog, HowKinds,
 // and LookAlikes, so edit here and regenerate rather than touching that page.
 var Catalog = []Meta{
 	// Links.

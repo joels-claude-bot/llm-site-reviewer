@@ -7,10 +7,9 @@ import BadRenderExample from '../../components/BadRenderExample';
 
 # Worked example
 
-These are corpus fixtures: realistic holiday pages that compile cleanly but carry planted defects.
+These are example fixtures: realistic holiday pages that compile cleanly but carry planted defects.
 Between them they exercise **every category and subcategory** in the [reference](/spec/reference),
-plus the **look-alikes that must not be flagged**. They are the human-readable seed of the
-[corpus](/spec/corpus).
+plus the **look-alikes that must not be flagged**.
 
 A fixture is allowed to be ugly — being broken is its whole specification. That is the opposite job
 from the [golden page](/problem/reader-failures), which stays clean to teach the style.
@@ -52,7 +51,7 @@ naming a function the repo lacks) — they cannot be shown in an embedded mock, 
 | `MISSING_IMAGE` | `nice-promenade.jpg` does not render | Mechanical | Blocking |
 | `BROKEN_EXTERNAL_LINK` | "partner-bookings.example/holiday/nce-2026" returns 404 | Mechanical | Blocking |
 | `SOFT_404` | the "weather page" link returns `200` but the page says it has moved | Text review | Report · *real fixture* |
-| `ORPHANED_PAGE` | a corpus page that no nav or page links to | Mechanical | Blocking · *real fixture* |
+| `ORPHANED_PAGE` | a page that no nav or page links to | Mechanical | Blocking · *real fixture* |
 
 ### Rendering
 
@@ -91,7 +90,7 @@ naming a function the repo lacks) — they cannot be shown in an embedded mock, 
 ## Coverage — what it must ignore
 
 The fixtures also plant look-alikes. A reviewer that flags these is one authors learn to mute, so the
-corpus tests them as deliberately-fine cases.
+tests treat them as deliberately-fine cases.
 
 | Looks suspicious | Why it is fine |
 |---|---|

@@ -29,7 +29,7 @@ together**:
    model-readable frames.
 3. **The formatting-judgment prompts** — the per-state questions that turn a screenshot into a
    verdict.
-4. **The exit-code orchestration** — making the whole thing a clean [CI gate](/appendix/exit-codes).
+4. **The exit-code orchestration** — making the whole thing a clean [CI gate](/appendix/decisions/0006-exit-codes-ci-contract).
 
 :::tip The swappable LLM layer
 The model is a **swappable adapter**, not a hardcoded vendor. The original skill used cloud Gemini;

@@ -160,18 +160,18 @@ Abstract categories only land when they are tied to a visible contradiction.
 Once again - diagram illustration says 1000x words!
 :::
 
-### Test corpus opened with abstractions
+### Test suite opened with abstractions
 
-**Asked:** explain the test corpus.
+**Asked:** explain the test suite.
 
-**LLM did:** opened with two abstractions stacked on each other — "corpus of pages" and
+**LLM did:** opened with two abstractions stacked on each other — "set of pages" and
 "expectations file" — before the reader had seen a single case.
 
 **Better:** walk through one tiny case first, then name the machinery.
 
 ```md
 Before:
-The reviewer is specified by a corpus of pages with known, deliberately planted defects plus an
+The reviewer is specified by a set of pages with known, deliberately planted defects plus an
 expectations file that says what each defect is and whether the reviewer should flag it.
 
 After:
@@ -185,7 +185,7 @@ Name the abstraction after the reader has seen one example.
 
 ### Metric jargon hid a simple idea
 
-**Asked:** explain why every failure category appears twice in the corpus.
+**Asked:** explain why every failure category appears twice in the test pages.
 
 **LLM did:** reached for `recall` and `precision` to carry the whole explanation.
 

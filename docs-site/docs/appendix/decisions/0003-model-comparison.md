@@ -100,7 +100,7 @@ This is your real question.
 
 What makes the brain: the **number of parameters** (weights) and the quality of training. A 3-billion and a 150-billion model read the same 10 tokens; the big one just gets it.
 
-There is no single "intelligence number" — that is what benchmarks, and your corpus, exist to measure: *did it actually catch the bug?*
+There is no single "intelligence number" — that is what benchmarks, and your test pages, exist to measure: *did it actually catch the bug?*
 
 Here is the punchline for running locally:
 
@@ -154,7 +154,7 @@ It replaced the retired Gemini flash with a one-line model-string change.
 
 ```mermaid
 flowchart LR
-    Corpus["Markdown corpus<br/>+ defect catalog"] --> DS["deepseek-v4-flash:cloud<br/>(text reasoning)"]
+    Pages["Markdown test pages<br/>+ defect catalog"] --> DS["deepseek-v4-flash:cloud<br/>(text reasoning)"]
     DS --> JSON["structured JSON findings"]
     Shots["rendered-page screenshots"] -. later, vision model .-> VL["qwen2.5vl / multimodal"]
     VL -. does the diagram match the prose? .-> JSON
@@ -202,7 +202,7 @@ Rules of thumb:
 | `gemini-3-flash-preview` | ~980,000 | ~1,400 | ~440 |
 
 :::tip The window is not the bottleneck
-Our whole corpus is a handful of small files — a few thousand tokens. Every one of these models swallows the entire site many times over. So context size should not drive the choice. The real limits, in order: (1) does it support images at all; (2) the output budget when many defects are reported; (3) reasoning quality decaying over long inputs ("lost in the middle"), long before the window fills. **Pick for reasoning and image support, not the biggest context number.**
+Our whole test set is a handful of small files — a few thousand tokens. Every one of these models swallows the entire site many times over. So context size should not drive the choice. The real limits, in order: (1) does it support images at all; (2) the output budget when many defects are reported; (3) reasoning quality decaying over long inputs ("lost in the middle"), long before the window fills. **Pick for reasoning and image support, not the biggest context number.**
 :::
 
 ## The visual pass: two ways to wire it
@@ -262,7 +262,7 @@ Start with **Approach B**: the transcription is testable and it keeps the text m
 :::
 
 :::note Why not just switch everything to `minimax-m3`?
-Tempting — one 1M-token multimodal model would collapse both passes into one. But the text pass works today on `deepseek-v4-flash`. Swapping a working, tested component for a bigger unvalidated one is a change to make *deliberately*, with the corpus as evidence, not by default.
+Tempting — one 1M-token multimodal model would collapse both passes into one. But the text pass works today on `deepseek-v4-flash`. Swapping a working, tested component for a bigger unvalidated one is a change to make *deliberately*, with the test pages as evidence, not by default.
 :::
 
 ## Structured output: enforced locally, a hint in the cloud
@@ -365,7 +365,7 @@ Enforcement, cost, and privacy all argue for a local model on the structured sta
 
 **desktop-work is the only viable box.** Its 12 GB card clears the "runs a real reasoner" line; 62 GB of RAM gives CPU-offload headroom. **degen-bot's 6 GB card only holds `qwen2.5vl:3b`-sized models — the tier that already caught nothing.** Don't pursue local reasoning there.
 
-VRAM is the binding constraint — per-model sizes and where each fits are in the [master table](#models-at-a-glance). Here is what actually happened when we ran them against the corpus:
+VRAM is the binding constraint — per-model sizes and where each fits are in the [master table](#models-at-a-glance). Here is what actually happened when we ran them against the test pages:
 
 | Model | Harness | vs the bar |
 |---|---|---|
@@ -404,7 +404,7 @@ Do not pursue `gpt-oss:20b` further. Do not attempt local reasoning on **degen-b
 
 **Bottom line first:** every local model we've run on the 12 GB RTX 3060 has missed the judgment findings the cloud 150B models catch. A bigger card (24 GB or 32 GB) lets us run *larger* models resident and fast, but the tier it unlocks — dense 30–34B — is the same tier that already fell short. So a GPU upgrade buys **speed and the ability to properly test the 30B tier**, not a guaranteed pass. Read this before spending.
 
-Local models against the corpus, with what each needs to run *fully resident* (no slow RAM offload). VRAM at Q4 ≈ `0.6 GB × B-params` + context.
+Local models against the test pages, with what each needs to run *fully resident* (no slow RAM offload). VRAM at Q4 ≈ `0.6 GB × B-params` + context.
 
 | Model | Size | Fits 3060 (12 GB)? | Min GPU to run resident | Result vs the bar |
 |---|---|:-:|---|---|
@@ -426,11 +426,11 @@ Local models against the corpus, with what each needs to run *fully resident* (n
 | 2×24 GB / 48 GB card | 48 GB | ~70B (~42 GB) | The 70B tier — first size that *might* approach minimax-class | The only local path that could plausibly hit the bar, and it's a gamble at real cost |
 
 :::warning The gradient is the honest guide, not the spec sheet
-Measured results go **3.8B → nothing, 20B → nothing, 30B → nothing, 150B → everything**. A 24 GB or 32 GB card lands you squarely in the 30–34B tier — the tier `qwen3:30b-a3b` already sat in when it *missed the contradiction*. The first tier with a real chance is ~70B, which needs ~48 GB (two cards or a workstation GPU), and even that is unproven against our corpus.
+Measured results go **3.8B → nothing, 20B → nothing, 30B → nothing, 150B → everything**. A 24 GB or 32 GB card lands you squarely in the 30–34B tier — the tier `qwen3:30b-a3b` already sat in when it *missed the contradiction*. The first tier with a real chance is ~70B, which needs ~48 GB (two cards or a workstation GPU), and even that is unproven against our test pages.
 
 So: **don't buy a GPU expecting it to close the quality gap.** [Approach B](#the-visual-pass-two-ways-to-wire-it) — cloud model for the reasoning, a tiny local grammar-constrained model for the schema-valid JSON — already gets minimax-quality findings *and* the hard JSON guarantee, for free, today.
 :::
 
 :::tip If you buy one anyway
-Buy for **speed and to unblock testing the 30B tier**, or because **local-only privacy is a hard requirement** — not to match the cloud. On that basis the **RTX 3090 (24 GB)** is the pick: it runs the whole 30–34B tier resident and is far cheaper than a 5090. The 5090's extra 8 GB doesn't reach the next model size for this batch job, so its premium buys little here. Whichever you get, prove it against the corpus before trusting it — measure, don't guess.
+Buy for **speed and to unblock testing the 30B tier**, or because **local-only privacy is a hard requirement** — not to match the cloud. On that basis the **RTX 3090 (24 GB)** is the pick: it runs the whole 30–34B tier resident and is far cheaper than a 5090. The 5090's extra 8 GB doesn't reach the next model size for this batch job, so its premium buys little here. Whichever you get, prove it against the test pages before trusting it — measure, don't guess.
 :::

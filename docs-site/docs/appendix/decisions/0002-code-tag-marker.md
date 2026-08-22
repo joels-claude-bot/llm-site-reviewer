@@ -39,7 +39,7 @@ flowchart TD
     subgraph good["Search for a unique marker"]
         direction TB
         Q2["rg '@ct'"] --> G1["@ct arch role=pure ✓"]
-        Q2 --> G2["@ct graph node=corpus ✓"]
+        Q2 --> G2["@ct graph node=review ✓"]
     end
     classDef bad fill:#f1948a,color:#0f172a,stroke:#a93226
     classDef good fill:#52be80,color:#0f172a,stroke:#196f3d
@@ -64,8 +64,8 @@ The proposed form (rename freely):
 
 ```go
 //ct arch  role=pure                 // the existing arch tag, generalized
-//ct graph node=corpus role=io       // a node in a generated graph
-//ct graph edge=corpus->finding      // an edge between two nodes
+//ct graph node=review role=io        // a node in a generated graph
+//ct graph edge=review->finding       // an edge between two nodes
 ```
 
 `@ct` ("code tag") is the unique sigil — the thing you search for. `arch` and `graph` are **namespaces**: which pass cares about this tag. Everything after is the payload. So the universal search is `rg '@ct '` (returns *every* tag in the repo), and a per-pass search is `rg '@ct graph'` (just the graph tags). Prior art for the convention: Go's own `//go:generate` / `//go:build` directives, and the rejected-but-well-designed [PEP 350 codetags](https://peps.python.org/pep-0350/).
@@ -87,7 +87,7 @@ flowchart TD
     class Lint,Gen,Future plain
 ```
 
-Build order is left to right. **Pass A (lint)** is the first slice and the highest value: wire it into `just check` so a typo'd tag or a dangling edge fails CI. **Pass B (graph)** emits Mermaid into a managed block a generator can overwrite in place — the same "generated, never hand-copied" rule the [corpus page](/spec/corpus) already follows.
+Build order is left to right. **Pass A (lint)** is the first slice and the highest value: wire it into `just check` so a typo'd tag or a dangling edge fails CI. **Pass B (graph)** emits Mermaid into a managed block a generator can overwrite in place — the same "generated, never hand-copied" rule the [category reference](/spec/reference) already follows.
 
 ## Open question: where do graph edges come from?
 
@@ -97,7 +97,7 @@ A grouping tag (`role=pure`) is safe — it describes one symbol in place. A gra
 - **Hand-tagged** (`@ct graph edge=a->b`) — flexible, works in any language, expresses logical links the compiler cannot see. But the comment rots the moment the code's real dependency changes and the tag does not.
 - **Derived from the code** — for Go we already walk the AST in [`codemap`](/concept/code-map); real import and call edges come for free and cannot drift, because the graph *is* the code.
 
-Leaning toward derived-first, with hand-tags only for logical edges the code cannot express — the same reason [golden files](/appendix/decisions/0001-test-and-corpus-strategy) beat hand-written expectations. This choice sets what Pass A's lint must check (endpoint resolution) and how Pass B builds the graph, so it is the next thing to settle.
+Leaning toward derived-first, with hand-tags only for logical edges the code cannot express — the same reason golden files beat hand-written expectations. This choice sets what Pass A's lint must check (endpoint resolution) and how Pass B builds the graph, so it is the next thing to settle.
 :::
 
 ## Consequences

@@ -3,8 +3,8 @@ title: Category table
 ---
 
 :::danger Auto-generated: do not edit this page
-Every row below is written by `cmd/refdocs` from `internal/finding.Catalog`. Hand edits are
-overwritten on the next build. To change a category, edit the catalog in Go and run `just gen-reference`.
+Every row below is written by `cmd/gencategories` from `internal/finding.Catalog`. Hand edits are
+overwritten on the next build. To change a category, edit the catalog in Go and run `just gen-categories`.
 :::
 
 # Category table
@@ -16,6 +16,13 @@ The full failure taxonomy. See the [category reference](/spec/reference) for wha
 | Mechanical | A tool proves the answer exactly; no model is involved. |
 | Cognitive Text Review | A text model reads the prose and judges what needs judgment. |
 | Cognitive Screenshot Review | A vision model looks at a screenshot of the rendered page. |
+
+## Links
+
+| Category | Example | How checked |
+|---------|---------|---------|
+| `BROKEN_EXTERNAL_LINK` | external page returns 404 | Mechanical |
+| `SOFT_404` | page returns 200 but title says "Page not found" | Cognitive Text Review |
 
 ## Rendering
 
@@ -61,5 +68,4 @@ These are not defects:
 | `# TODO` in an explicit stub section | Known incomplete work, not a new finding |
 | acronym defined in a glossary | The reader already has the context |
 | intentional 404 page in an error-handling guide | The 404 is the example |
-
 

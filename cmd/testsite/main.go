@@ -1,7 +1,7 @@
 // Command testsite serves one folder of markdown as a tiny rendered site.
 // It is Go's minimal answer to `mkdocs serve`: render each .md with goldmark on
 // request and serve everything else (images, svg) verbatim. Used to preview the
-// testie/ demo corpus, a worked "problem" example with deliberately planted defects.
+// testie/ demo site, a worked "problem" example with deliberately planted defects.
 //
 //	go run ./cmd/testsite                       # serve ./testie on :9698
 //	go run ./cmd/testsite -dir x -port 8080     # any folder, any port

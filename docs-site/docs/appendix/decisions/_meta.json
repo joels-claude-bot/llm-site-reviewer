@@ -1,7 +1,6 @@
 [
-  "0001-test-and-corpus-strategy",
   "0002-code-tag-marker",
   "0003-model-comparison",
-  "0004-slicing-corpus-into-calls",
-  "0005-local-vision"
+  "0005-local-vision",
+  "0006-exit-codes-ci-contract"
 ]

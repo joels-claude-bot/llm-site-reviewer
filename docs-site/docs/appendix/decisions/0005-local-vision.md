@@ -17,7 +17,7 @@ Not "which model" — *"which model on which machine"*. There are three buckets,
 3. **Cloud** — Gemini / Claude via **LiteLLM → OpenRouter**. No hardware, best quality, per-token cost.
 
 :::tip The trial-run trick — de-risk tier 2 before buying
-OpenRouter hosts the *exact* model I'd run on a tier-2 card (**Qwen3-VL 32B**). So the LiteLLM proxy isn't just for using cloud frontier models — it lets me call the tier-2 candidate **hosted**, feed it my real corpus, and decide whether it's good enough **before** dropping ~£650+ on a GPU. If Qwen3-VL 32B via OpenRouter isn't good enough, no card will fix that.
+OpenRouter hosts the *exact* model I'd run on a tier-2 card (**Qwen3-VL 32B**). So the LiteLLM proxy isn't just for using cloud frontier models — it lets me call the tier-2 candidate **hosted**, feed it my real test pages, and decide whether it's good enough **before** dropping ~£650+ on a GPU. If Qwen3-VL 32B via OpenRouter isn't good enough, no card will fix that.
 :::
 
 ## What changed since the first draft
@@ -56,7 +56,7 @@ VRAM figures are Q4 (~½ byte/param + overhead), consistent with ADR-010's "does
 | **Qwen3-VL 32B** ⭐ | 32B | ~20 GB | Fits a single 24GB card. The reason to buy a 3090. **Trial it via OpenRouter first.** |
 | MiniCPM-V 4.5 (higher quant) | 8B | ~8–12 GB | Run at Q8/full precision with long context + many images per call. |
 
-**Verdict:** the whole tier-2 case rests on **Qwen3-VL 32B**. Prove it hosted on OpenRouter against the corpus; only buy the 3090 if it clears the bar.
+**Verdict:** the whole tier-2 case rests on **Qwen3-VL 32B**. Prove it hosted on OpenRouter against the test pages; only buy the 3090 if it clears the bar.
 
 ### Tier 3 — Cloud (LiteLLM → OpenRouter)
 
@@ -72,7 +72,7 @@ VRAM figures are Q4 (~½ byte/param + overhead), consistent with ADR-010's "does
 
 **Proposed.** Ordered plan, cheapest-first:
 
-1. **Now:** benchmark **Qwen3-VL 8B** (and MiniCPM-V 4.5 for OCR-heavy pages) on the 3060 against the real corpus. This is free and directly tests whether tier 1 is viable.
+1. **Now:** benchmark **Qwen3-VL 8B** (and MiniCPM-V 4.5 for OCR-heavy pages) on the 3060 against the real test pages. This is free and directly tests whether tier 1 is viable.
 2. **Before buying:** call **Qwen3-VL 32B via OpenRouter** through the existing LiteLLM proxy. If it's good enough → a **used RTX 3090** is justified (breaks even vs Gemini Flash per ADR-010). If not → no GPU purchase, stay on cloud.
 3. **Baseline throughout:** keep **Gemini** (tier 3) as the quality yardstick and the low-volume default.
 
