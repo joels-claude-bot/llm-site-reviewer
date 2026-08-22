@@ -1,1 +1,10 @@
-["lessons-learned", { "type": "dir", "name": "decisions", "label": "Decisions" }]
+[
+  "future-work",
+  "lessons-learned",
+  "existing-tools",
+  {
+    "type": "dir",
+    "name": "decisions",
+    "label": "Decisions"
+  }
+]
