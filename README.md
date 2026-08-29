@@ -17,6 +17,6 @@ GEMINI_API_KEY=<gemini_key_here> llm-site-reviewer <target-path>
 
 
 ## TODO
-- [ ] Add other providers to gemini
+- [ ] visual review? with CDP
 
 

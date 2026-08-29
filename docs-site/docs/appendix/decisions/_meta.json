@@ -2,5 +2,6 @@
   "0002-code-tag-marker",
   "0003-model-comparison",
   "0005-local-vision",
-  "0006-exit-codes-ci-contract"
+  "0006-exit-codes-ci-contract",
+  "0007-review-modes-and-defect-coverage"
 ]

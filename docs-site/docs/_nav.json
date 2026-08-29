@@ -15,11 +15,6 @@
     "activeMatch": "/concept/"
   },
   {
-    "text": "Landscape",
-    "link": "/landscape/existing-tools",
-    "activeMatch": "/landscape/"
-  },
-  {
     "text": "Appendix",
     "link": "/appendix/lessons-learned",
     "activeMatch": "/appendix/"
