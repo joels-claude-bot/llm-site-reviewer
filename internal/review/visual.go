@@ -46,7 +46,9 @@ func VisualReview(ctx context.Context, client ChatClient, urls []string, model s
 		if err != nil {
 			return nil, err
 		}
-		prompt := fmt.Sprintf("Review %s from %d overlapping screenshots in top-to-bottom order. Report only defects visible in pixels. Do not review links, prose style, or outside facts. Allowed categories: %s. Overlap repeats content, so report each defect once. Frame is the 1-based screenshot with clearest evidence.", url, len(capture.Frames), categories)
+		prompt := fmt.Sprintf(`Review %s from %d overlapping screenshots in top-to-bottom order.
+Report only definite failures visible in the pixels, not preferences, possible risks, or accessibility speculation. A solid-colour component is not FLAT_COLOUR: use that only when the page as a whole is an undifferentiated wall with no useful visual hierarchy. Use TEXT_LEGIBILITY only when text is actually difficult to read at the supplied resolution, not merely because contrast could theoretically be improved. Use TRUNCATION only for visibly clipped content, not content continuing into the next overlapping frame. Do not review links, prose style, or facts requiring outside knowledge.
+Allowed categories: %s. Overlap repeats content, so report each defect once. Frame is the 1-based screenshot with the clearest evidence. Return an empty findings list when no definite defect is present.`, url, len(capture.Frames), categories)
 		blocks := []litellm.Block{litellm.Text(prompt)}
 		for _, frame := range capture.Frames {
 			blocks = append(blocks, litellm.ImageBlock{Data: frame.PNG, MIME: "image/png"})
