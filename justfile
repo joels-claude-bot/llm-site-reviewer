@@ -4,6 +4,7 @@
 set shell := ["bash", "-uc"]
 
 docs_dir := "docs-site"
+example_dir := "examples/offsite"
 
 # list recipes
 default:
@@ -21,6 +22,14 @@ test:
 gen-categories:
     go run ./cmd/gencategories -out docs-site/docs/spec/categories.md
 
-# run the dev server for the docs from the testie dir
-testie:
-    go run ./cmd/testsite -dir testie -port 9699
+# serve the offsite example site
+example-site port="9700":
+    go run ./cmd/testsite -dir {{ example_dir }} -port {{ port }}
+
+# review the offsite example as one batch request
+example-batch:
+    go run . -mode batch {{ example_dir }}
+
+# review the offsite example with dependency resolution
+example-dependency:
+    go run . -mode dependency {{ example_dir }}

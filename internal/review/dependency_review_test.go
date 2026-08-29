@@ -67,22 +67,19 @@ func TestParseResolverResponseSurfacesErrorStatus(t *testing.T) {
 
 func TestValidatePaths(t *testing.T) {
 	byPath := map[string]docPage{"a.md": {Path: "a.md"}, "b.md": {Path: "b.md"}}
-	got, err := validatePaths("a.md", []string{"b.md"}, byPath)
-	if err != nil {
-		t.Fatalf("validatePaths returned error: %v", err)
-	}
+	got := validatePaths("a.md", []string{"b.md"}, byPath)
 	if len(got) != 1 || got[0] != "b.md" {
 		t.Fatalf("got = %v, want [b.md]", got)
 	}
 }
 
-func TestValidatePathsRejectsUnknownAndSelf(t *testing.T) {
+// An unknown or self-referential path is dropped (not fatal): one page's bad
+// resolver output must not abort the whole review.
+func TestValidatePathsDropsUnknownAndSelf(t *testing.T) {
 	byPath := map[string]docPage{"a.md": {Path: "a.md"}, "b.md": {Path: "b.md"}}
-	if _, err := validatePaths("a.md", []string{"missing.md"}, byPath); err == nil {
-		t.Fatal("expected unknown dependency path error")
-	}
-	if _, err := validatePaths("a.md", []string{"a.md"}, byPath); err == nil {
-		t.Fatal("expected self dependency error")
+	got := validatePaths("a.md", []string{"missing.md", "a.md", "b.md"}, byPath)
+	if len(got) != 1 || got[0] != "b.md" {
+		t.Fatalf("got = %v, want [b.md] (missing + self dropped)", got)
 	}
 }
 
@@ -93,10 +90,7 @@ func TestValidatePathsTruncatesToMax(t *testing.T) {
 		byPath[name] = docPage{Path: name}
 		deps = append(deps, name)
 	}
-	got, err := validatePaths("a.md", deps, byPath)
-	if err != nil {
-		t.Fatalf("validatePaths returned error: %v", err)
-	}
+	got := validatePaths("a.md", deps, byPath)
 	if len(got) != maxDependencies {
 		t.Fatalf("got %d paths, want %d", len(got), maxDependencies)
 	}

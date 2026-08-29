@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/yuin/goldmark"
@@ -65,11 +66,18 @@ func isRemoteRef(dest string) bool {
 	return parsed.Scheme == "http" || parsed.Scheme == "https"
 }
 
-// resolveLocalRef turns a filesystem destination into an absolute path. An
-// absolute reference (leading "/") is taken as-is; a relative one is joined
-// with the directory of the markdown file it was found in.
-func resolveLocalRef(dest, mdFileDir string) string {
+// resolveLocalRef turns a filesystem destination into an absolute path.
+//
+// A leading-slash reference is docs-root-relative in mkdocs terms (the slash
+// means the docs_dir root, not the filesystem root), so it is joined onto
+// docsRoot when one is known. Without a docsRoot such a reference falls back to
+// as-is. A relative reference is joined with the directory of the markdown file
+// it was found in.
+func resolveLocalRef(dest, mdFileDir, docsRoot string) string {
 	if filepath.IsAbs(dest) {
+		if docsRoot != "" {
+			return filepath.Join(docsRoot, strings.TrimPrefix(dest, "/"))
+		}
 		return dest
 	}
 	return filepath.Join(mdFileDir, dest)
@@ -98,12 +106,14 @@ func downloadImage(rawURL string) ([]byte, error) {
 
 // ResolveMarkdownImages extracts every image reference from a markdown file and
 // resolves each to its bytes. mdFilePath is the absolute path of the markdown
-// file itself; relative references are resolved against its directory.
+// file itself; relative references are resolved against its directory, and
+// leading-slash references against docsRoot (the mkdocs docs_dir root). Pass an
+// empty docsRoot when there is no such root and absolute refs are literal.
 //
-// A failure to resolve any single image (missing file, failed download)
-// returns an error and aborts — callers get all-or-nothing, matching the
-// existing dependency-review behaviour.
-func ResolveMarkdownImages(content []byte, mdFilePath string) ([]MarkdownImage, error) {
+// A single image that cannot be resolved (missing file, failed download) is
+// logged and skipped rather than aborting the whole run: one bad reference in a
+// large docs set must not kill the review.
+func ResolveMarkdownImages(content []byte, mdFilePath, docsRoot string) ([]MarkdownImage, error) {
 	destinations, err := markdownImageDestinations(content)
 	if err != nil {
 		return nil, err
@@ -116,7 +126,8 @@ func ResolveMarkdownImages(content []byte, mdFilePath string) ([]MarkdownImage, 
 			slog.Debug("resolving remote markdown image", "ref", dest)
 			body, err := downloadImage(dest)
 			if err != nil {
-				return nil, err
+				slog.Warn("skipping unresolvable remote markdown image", "ref", dest, "md_file", mdFilePath, "error", err)
+				continue
 			}
 			images = append(images, MarkdownImage{
 				Ref:      dest,
@@ -127,11 +138,12 @@ func ResolveMarkdownImages(content []byte, mdFilePath string) ([]MarkdownImage, 
 			continue
 		}
 
-		resolved := resolveLocalRef(dest, mdFileDir)
+		resolved := resolveLocalRef(dest, mdFileDir, docsRoot)
 		slog.Debug("resolving local markdown image", "ref", dest, "resolved", resolved)
 		body, err := os.ReadFile(resolved)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read image content %v: %w", resolved, err)
+			slog.Warn("skipping unresolvable local markdown image", "ref", dest, "resolved", resolved, "md_file", mdFilePath, "error", err)
+			continue
 		}
 		images = append(images, MarkdownImage{
 			Ref:      dest,

@@ -16,7 +16,7 @@ func TestResolveMarkdownImagesRelative(t *testing.T) {
 	mdPath := filepath.Join(dir, "page.md")
 	writeFile(t, dir, "page.md", "![Route](route.png)\n")
 
-	images, err := ResolveMarkdownImages([]byte("![Route](route.png)\n"), mdPath)
+	images, err := ResolveMarkdownImages([]byte("![Route](route.png)\n"), mdPath, "")
 	if err != nil {
 		t.Fatalf("ResolveMarkdownImages returned error: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestResolveMarkdownImagesRelativeParent(t *testing.T) {
 	writeFile(t, assets, "diagram.png", "diagram-bytes")
 	mdPath := filepath.Join(pages, "page.md")
 
-	images, err := ResolveMarkdownImages([]byte("![D](../assets/diagram.png)\n"), mdPath)
+	images, err := ResolveMarkdownImages([]byte("![D](../assets/diagram.png)\n"), mdPath, "")
 	if err != nil {
 		t.Fatalf("ResolveMarkdownImages returned error: %v", err)
 	}
@@ -68,8 +68,40 @@ func TestResolveMarkdownImagesRelativeParent(t *testing.T) {
 	}
 }
 
-// An absolute filesystem reference is taken as-is, not joined under the page dir.
-func TestResolveMarkdownImagesAbsolute(t *testing.T) {
+// A leading-slash reference is docs-root-relative (mkdocs semantics): it resolves
+// under docsRoot, not the filesystem root, and not the page's own directory.
+func TestResolveMarkdownImagesDocsRootRelative(t *testing.T) {
+	docsRoot := t.TempDir()
+	diagrams := filepath.Join(docsRoot, "diagrams")
+	if err := os.Mkdir(diagrams, 0755); err != nil {
+		t.Fatalf("mkdir diagrams: %v", err)
+	}
+	writeFile(t, diagrams, "map.svg", "svg-bytes")
+	// The markdown file lives in a nested subdirectory of the docs root.
+	pages := filepath.Join(docsRoot, "pages")
+	if err := os.Mkdir(pages, 0755); err != nil {
+		t.Fatalf("mkdir pages: %v", err)
+	}
+	mdPath := filepath.Join(pages, "page.md")
+
+	images, err := ResolveMarkdownImages([]byte("![Map](/diagrams/map.svg)\n"), mdPath, docsRoot)
+	if err != nil {
+		t.Fatalf("ResolveMarkdownImages returned error: %v", err)
+	}
+	if len(images) != 1 {
+		t.Fatalf("image count = %d, want 1", len(images))
+	}
+	want := filepath.Join(diagrams, "map.svg")
+	if images[0].Resolved != want {
+		t.Errorf("Resolved = %q, want %q", images[0].Resolved, want)
+	}
+	if string(images[0].Content) != "svg-bytes" {
+		t.Errorf("Content = %q, want svg-bytes", images[0].Content)
+	}
+}
+
+// Without a docsRoot, an absolute filesystem reference is taken as-is.
+func TestResolveMarkdownImagesAbsoluteNoDocsRoot(t *testing.T) {
 	dir := t.TempDir()
 	absImage := filepath.Join(dir, "logo.png")
 	if err := os.WriteFile(absImage, []byte("abs-bytes"), 0644); err != nil {
@@ -78,7 +110,7 @@ func TestResolveMarkdownImagesAbsolute(t *testing.T) {
 	// The markdown file lives somewhere completely different.
 	mdPath := filepath.Join(t.TempDir(), "page.md")
 
-	images, err := ResolveMarkdownImages([]byte("![Logo]("+absImage+")\n"), mdPath)
+	images, err := ResolveMarkdownImages([]byte("![Logo]("+absImage+")\n"), mdPath, "")
 	if err != nil {
 		t.Fatalf("ResolveMarkdownImages returned error: %v", err)
 	}
@@ -104,7 +136,7 @@ func TestResolveMarkdownImagesRemote(t *testing.T) {
 	remoteURL := server.URL + "/diagram.png"
 	mdPath := filepath.Join(t.TempDir(), "page.md")
 
-	images, err := ResolveMarkdownImages([]byte("![Remote]("+remoteURL+")\n"), mdPath)
+	images, err := ResolveMarkdownImages([]byte("![Remote]("+remoteURL+")\n"), mdPath, "")
 	if err != nil {
 		t.Fatalf("ResolveMarkdownImages returned error: %v", err)
 	}
@@ -123,7 +155,8 @@ func TestResolveMarkdownImagesRemote(t *testing.T) {
 	}
 }
 
-// A non-2xx remote response aborts with a message carrying the URL and status.
+// A non-2xx remote response is non-fatal: the image is skipped so one bad
+// reference cannot kill the run.
 func TestResolveMarkdownImagesRemoteError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
 		http.Error(writer, "gone", http.StatusNotFound)
@@ -133,17 +166,23 @@ func TestResolveMarkdownImagesRemoteError(t *testing.T) {
 	remoteURL := server.URL + "/missing.png"
 	mdPath := filepath.Join(t.TempDir(), "page.md")
 
-	_, err := ResolveMarkdownImages([]byte("![Missing]("+remoteURL+")\n"), mdPath)
-	if err == nil {
-		t.Fatalf("expected error for 404 remote image, got nil")
+	images, err := ResolveMarkdownImages([]byte("![Missing]("+remoteURL+")\n"), mdPath, "")
+	if err != nil {
+		t.Fatalf("expected 404 remote image to be skipped, got error: %v", err)
+	}
+	if len(images) != 0 {
+		t.Fatalf("image count = %d, want 0 (bad remote image skipped)", len(images))
 	}
 }
 
-// A missing local file aborts with an error rather than being skipped.
+// A missing local file is non-fatal: the image is skipped rather than aborting.
 func TestResolveMarkdownImagesMissingLocal(t *testing.T) {
 	mdPath := filepath.Join(t.TempDir(), "page.md")
-	_, err := ResolveMarkdownImages([]byte("![Gone](nope.png)\n"), mdPath)
-	if err == nil {
-		t.Fatalf("expected error for missing local image, got nil")
+	images, err := ResolveMarkdownImages([]byte("![Gone](nope.png)\n"), mdPath, "")
+	if err != nil {
+		t.Fatalf("expected missing local image to be skipped, got error: %v", err)
+	}
+	if len(images) != 0 {
+		t.Fatalf("image count = %d, want 0 (missing local image skipped)", len(images))
 	}
 }

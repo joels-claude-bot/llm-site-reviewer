@@ -24,7 +24,7 @@ type DependencyConfig struct {
 func DefaultDependencyConfig() DependencyConfig {
 	return DependencyConfig{
 		VisionModel: modelVision,
-		ReviewModel: modelReview,
+		ReviewModel: modelReviewProxy,
 		Recursive:   true,
 	}
 }
@@ -40,7 +40,9 @@ func DependencyReview(ctx context.Context, client ChatClient, rootPaths []string
 	config = fillDefaults(config)
 	var pages []docPage
 	for _, rootPath := range rootPaths {
-		collected, err := summarisePages(ctx, client, rootPath, config.VisionModel, config.Recursive)
+		// Each CLI root is its own docs_dir root: leading-slash image references
+		// inside its pages resolve against it (mkdocs semantics).
+		collected, err := summarisePages(ctx, client, rootPath, rootPath, config.VisionModel, config.Recursive)
 		if err != nil {
 			return nil, fmt.Errorf("failed to summarise dependency review pages: %w", err)
 		}
@@ -98,11 +100,7 @@ func resolvePaths(ctx context.Context, client ChatClient, pages []docPage, model
 			continue
 		}
 
-		depPaths, err := validatePaths(page.Path, parsed.DependencyPaths, byPath)
-		if err != nil {
-			return nil, err
-		}
-		page.DependencyPaths = depPaths
+		page.DependencyPaths = validatePaths(page.Path, parsed.DependencyPaths, byPath)
 		resolved[index] = page
 		slog.Debug("resolved dependency paths", "page_path", page.Path, "dependency_count", len(page.DependencyPaths))
 	}
@@ -223,20 +221,28 @@ func parseResolverResponse(pagePath, raw string) (dependencyResponse, error) {
 	return parsed, nil
 }
 
-func validatePaths(pagePath string, depPaths []string, byPath map[string]docPage) ([]string, error) {
+// validatePaths keeps only the dependency paths the resolver returned that are
+// real, distinct pages. A self-reference or an unknown path is the model
+// misbehaving on one page; like the resolver's own error status, it is dropped
+// with a warning rather than aborting the whole review.
+func validatePaths(pagePath string, depPaths []string, byPath map[string]docPage) []string {
 	if len(depPaths) > maxDependencies {
 		slog.Warn("resolver returned more dependencies than allowed; truncating", "page_path", pagePath, "returned", len(depPaths), "max", maxDependencies)
 		depPaths = depPaths[:maxDependencies]
 	}
+	valid := make([]string, 0, len(depPaths))
 	for _, depPath := range depPaths {
 		if depPath == pagePath {
-			return nil, fmt.Errorf("entry %s cannot depend on itself", pagePath)
+			slog.Warn("dropping self-referential dependency path", "page_path", pagePath)
+			continue
 		}
 		if _, ok := byPath[depPath]; !ok {
-			return nil, fmt.Errorf("unknown dependency path %q for %s", depPath, pagePath)
+			slog.Warn("dropping unknown dependency path", "page_path", pagePath, "dependency_path", depPath)
+			continue
 		}
+		valid = append(valid, depPath)
 	}
-	return depPaths, nil
+	return valid
 }
 
 // reviewDoc is one document as the reviewer sees it (target, image, or

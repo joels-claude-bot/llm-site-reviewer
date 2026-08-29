@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -52,8 +53,8 @@ func main() {
 
 // runDependency wires up the dependency review path. It takes one or more root
 // directories (DependencyReview summarises the pages under all of them and
-// resolves cross-page dependencies across the combined set) and prints one line
-// per reviewed page.
+// resolves cross-page dependencies across the combined set) and prints the
+// results as a single JSON array, one object per reviewed page.
 func runDependency(paths []string) error {
 	client, err := review.NewLLMClient(review.ClientConfigFromEnv(review.ProviderLiteLLMProxy))
 	if err != nil {
@@ -65,8 +66,12 @@ func runDependency(paths []string) error {
 		return err
 	}
 
-	for _, result := range results {
-		fmt.Printf("%s: %d reviewed item(s)\n", result.PagePath, len(result.Items))
+	// Emit a single JSON result, mirroring batch mode: one object per reviewed
+	// page, each carrying the same MdItem shape (id, name, success, errors).
+	encoded, err := json.MarshalIndent(results, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal dependency results: %w", err)
 	}
+	fmt.Println(string(encoded))
 	return nil
 }

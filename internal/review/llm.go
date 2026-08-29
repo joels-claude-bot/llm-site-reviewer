@@ -13,8 +13,9 @@ import (
 const DefaultLiteLLMProxyBaseURL = "http://127.0.0.1:9177/v1"
 
 const (
-	modelVision = "qwen3-vl"         // local vision proxy: summarise + resolve
-	modelReview = "gemini-3.6-flash" // final content review
+	modelVision      = "qwen3-vl"         // local vision proxy: summarise + resolve
+	modelReview      = "gemini-3.6-flash" // direct Gemini final content review
+	modelReviewProxy = "gemini-flash"     // LiteLLM proxy final content review
 )
 
 type LLMProvider string
