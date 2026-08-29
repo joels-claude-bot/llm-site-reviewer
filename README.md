@@ -8,6 +8,7 @@ This repo is my half-baked (learning golang / vibe coded) attempt to create an A
 ## Installaion
 ```bash
 go install github.com/joels-claude-bot/llm-site-reviewer@latest
+go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6201.1 install chromium
 ```
 
 ## Usage
@@ -15,7 +16,12 @@ go install github.com/joels-claude-bot/llm-site-reviewer@latest
 GEMINI_API_KEY=<gemini_key_here> llm-site-reviewer <target-path>
 ```
 
+Rendered-page review uses the existing LiteLLM proxy configuration:
+
+```bash
+LITELLM_MASTER_KEY=<key> llm-site-reviewer -mode visual https://docs.example.com/
+```
+
 
 ## TODO
-- [ ] integrate the Playwright screenshot pass into the Go review command
-
+- [x] integrate the Playwright screenshot pass into the Go review command

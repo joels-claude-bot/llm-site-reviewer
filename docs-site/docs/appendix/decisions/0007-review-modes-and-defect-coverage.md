@@ -6,15 +6,15 @@ title: "ADR 0007: Review modes and defect coverage"
 
 Status: Draft (2026-08-29)
 
-This record compares three ways of reviewing the 26 Markdown files in `~/politician-trading-research/docs`.
+This record compares three ways of reviewing the Markdown files in `~/politician-trading-research/docs`.
 
 | Mode | What it does | Model in this run |
 |---|---|---|
 | Batch | Reviews the corpus in one request. | Gemini 3.6 Flash |
 | Dependency | Summarises each page, finds related pages, then reviews the page with those dependencies. | Gemini 2.5 Flash for review; qwen3-vl for the earlier stages |
-| opencode | Gives an agent one file at a time and lets it search the rest of the corpus. | Gemini 2.5 Flash |
+| opencode | Gives an agent one complete file per call and lets it inspect the rest of the corpus. | Gemini 2.5 Flash |
 
-These runs compare whole systems, not just models: the prompts, context, tools and output limits also differ, and each configuration was run only once.
+These runs compare whole systems, not just models: the prompts, context, tools and output limits also differ, and each configuration was run only once. The current opencode run used one general review call per file, capped at five findings, and completed 28 files in about three minutes with four calls running concurrently.
 
 ## Defects used for grading
 
@@ -53,9 +53,9 @@ D10, a 24.9% versus 25.0% rounding difference, has been removed; rendering-only 
 
 ## Coverage
 
-✅ means the saved response contains the finding, ❌ means it does not, — means the file was outside that run, and ⏳ means the new fixture has not yet been graded against the saved responses.
+✅ means the saved response contains the finding, ❌ means it does not, and — means the file was outside that run.
 
-| # | Defect | Batch | Dependency | opencode per file |
+| # | Defect | Batch | Dependency | opencode per file, fair prompt |
 |---|---|---|---|---|
 | D1 | `raw_backtest_data.md` truncation | ✅ | ✅ | ✅ |
 | D2 | `raw_niche_edge.md` truncation | ✅ | ✅ | ✅ |
@@ -63,36 +63,35 @@ D10, a 24.9% versus 25.0% rounding difference, has been removed; rendering-only 
 | D4 | `raw_broader_clean.md` truncation | ✅ | ✅ | ✅ |
 | D5 | `raw_europe.md` pasted and truncated HTML | ✅ | — | ✅ |
 | D6 | KRUZ 14.5% versus about 18% | ✅ | ✅ | ❌ |
-| D8 | NANC 26.8% versus about 29% | ❌ | ✅ | ✅ |
+| D8 | NANC 26.8% versus about 29% | ❌ | ✅ | ❌ |
 | D12 | Tussell row has conflicting columns | ❌ | ✅ | ❌ |
 | D13 | Open Access UK row is duplicated | ❌ | ✅ | ✅ |
 | D14 | PDMR is not expanded | ✅ | ✅ | ✅ |
 | D15 | Index says documents end at 15 | ❌ | ❌ | ❌ |
-| D18 | `raw_uk_deep_dive.md` truncation | ⏳ | ⏳ | ⏳ |
-| D19 | Broken relative link in `index.md` | ⏳ | ⏳ | ⏳ |
-| D20 | Malformed table row in `10-decision-tree-and-uk-landscape.md` | ⏳ | ⏳ | ⏳ |
+| D18 | `raw_uk_deep_dive.md` truncation | — | — | ✅ |
+| D19 | Broken relative link in `index.md` | ❌ | ❌ | ❌ |
+| D20 | Malformed table row in `10-decision-tree-and-uk-landscape.md` | ❌ | ❌ | ❌ |
 
 The dependency results were previously transcribed incorrectly: `/tmp/dep-output.txt` explicitly reports both D13 and the D9 candidate, at lines 595 and 1265 respectively.
 
-For completeness, opencode found D7, dependency found D9, and none of the saved responses found D11; these candidates do not count towards the required score.
+For completeness, the fair opencode run reported D7, dependency reported D9, and none of the saved responses reported D11; these candidates do not count towards the required score.
 
 The “283 findings” reported for dependency mode are repeated review items across dependency contexts, not 283 distinct defects.
 
 ## Findings
 
-- Among the graded fixtures, batch found every confirmed single-page prose defect except the two table faults and the stale document range.
+- Among the graded fixtures in its scope, batch found every confirmed single-page prose defect except the two table faults, stale document range, broken link and malformed table row.
 - Dependency had the best coverage here, but its output included many repeated acronym and unverifiable-link findings.
-- Per-file opencode completed the corpus and found D8 and D13, but missed D6 and D12.
+- The fair per-file opencode run caught 8 of 14 confirmed defect groups: every truncation group, D13 and D14.
+- The same run returned 131 findings and used all five slots on many pages for acronyms, while missing D6, D8, D12, D15, D19 and D20.
 - The single all-corpus opencode call ran out of output space after its first review, so one bounded call per file is the viable shape.
 - A checkmark records one saved response, not a model's general ability to find that defect.
 
 ## Follow-ups
 
-- Run every harness on Gemini 2.5 Flash with the same confirmed defect set.
-- Repeat each configuration enough times to measure how stable its recall is.
-- Require short, evidence-backed findings with file names and quoted values.
-- Give opencode an explicit checklist for truncation, internal consistency, tables, acronyms, stale references and sibling-file comparisons.
-- Deduplicate dependency findings before presenting them.
+- Align all three modes on Gemini 2.5 Flash before comparing their harnesses directly.
+- Decide whether broad acronym reporting belongs in the default review because it displaced more serious findings.
+- Repeat the chosen configuration to measure result stability.
 
 ## Performance note
 

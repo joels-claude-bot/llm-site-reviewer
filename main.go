@@ -10,12 +10,13 @@ import (
 
 	"github.com/joels-claude-bot/llm-site-reviewer/internal/logging"
 	"github.com/joels-claude-bot/llm-site-reviewer/internal/review"
+	"github.com/joels-claude-bot/llm-site-reviewer/internal/visual"
 )
 
 func main() {
 	logging.InitFromEnv()
 
-	mode := flag.String("mode", "batch", "review mode: batch (all targets in one request) or dependency (per-page with resolved dependencies)")
+	mode := flag.String("mode", "batch", "review mode: batch, dependency, or visual (rendered page URLs)")
 	recursive := flag.Bool("recursive", false, "batch mode: descend into nested subdirectories (default: only immediate files of each target directory)")
 
 	flag.Usage = func() {
@@ -39,6 +40,8 @@ func main() {
 		err = review.LiteLLMRequest(positional, *recursive)
 	case "dependency":
 		err = runDependency(positional)
+	case "visual":
+		err = runVisual(positional)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown mode %q (want batch or dependency)\n\n", *mode)
 		flag.Usage()
@@ -49,6 +52,23 @@ func main() {
 		log.Fatalf("failed to call request: %v", err)
 	}
 
+}
+
+func runVisual(urls []string) error {
+	client, err := review.NewLLMClient(review.ClientConfigFromEnv(review.ProviderLiteLLMProxy))
+	if err != nil {
+		return err
+	}
+	results, err := review.VisualReview(context.Background(), client, urls, "", visual.DefaultConfig())
+	if err != nil {
+		return err
+	}
+	encoded, err := json.MarshalIndent(results, "", "  ")
+	if err != nil {
+		return err
+	}
+	fmt.Println(string(encoded))
+	return nil
 }
 
 // runDependency wires up the dependency review path. It takes one or more root

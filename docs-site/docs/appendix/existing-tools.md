@@ -12,7 +12,7 @@ what we wrap, and the small slice we actually build. The rule: **wrap, don't reb
 | Tool | Language | Job here | Why this one |
 |---|---|---|---|
 | [lychee](https://github.com/lycheeverse/lychee) | Rust | Internal + external link / anchor walking | Checks the **built** site (not raw Markdown source), concurrent, deterministic HTTP status. Has a ready [GitHub Action](https://github.com/lycheeverse/lychee-action). |
-| [Playwright](https://github.com/microsoft/playwright) | Node / TS | Headful browser driving + screenshots | Scrolls, clicks tabs, expands accordions, isolates a single `.mermaid` element, and snapshots — none of which `chromium --headless --screenshot` can do (it blindly crops with `--window-size` and hangs on never-idle pages). |
+| [playwright-go](https://github.com/mxschmitt/playwright-go) | Go | Browser driving + screenshots | Keeps browser orchestration in the Go binary while retaining Playwright's scrolling, element capture, and browser lifecycle APIs. |
 | [Vale](https://vale.sh/) | Go | Prose / acronym / style linting | Deterministic rulesets; fails on unapproved terminology **without hallucinating**. Good first tier for clarity checks. |
 | A model via the [`llm` CLI](https://llm.datasette.io/) | — | The "dumb judge" for the two uncertain questions | Swappable provider/model behind one interface — see the swappable-LLM note below. |
 

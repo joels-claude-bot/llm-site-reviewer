@@ -34,18 +34,14 @@ example-batch:
 example-dependency:
     go run . -mode dependency {{ example_dir }}
 
-# capture one rendered page as overlapping frames
-visual-capture url output="generated/visual":
-    cd visual && npm run capture -- {{ url }} ../{{ output }}
-
-# deterministic browser smoke test for visual segmentation
+# deterministic Go test for visual segmentation
 visual-test:
-    cd visual && npm test
+    go test ./internal/visual
 
-# opt-in visual model smoke test (requires the configured vision endpoint)
-visual-model-test:
-    cd visual && npm run test:model
+# browser-backed visual test (requires playwright-go install chromium)
+visual-e2e:
+    VISUAL_E2E=1 go test ./internal/visual -run TestCapturePageE2E -v
 
 # review one or more rendered page URLs with the configured vision model
 visual-review *urls:
-    cd visual && npm run review -- {{ urls }}
+    go run . -mode visual {{ urls }}
