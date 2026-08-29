@@ -17,6 +17,5 @@ GEMINI_API_KEY=<gemini_key_here> llm-site-reviewer <target-path>
 
 
 ## TODO
-- [ ] visual review? with CDP
-
+- [ ] integrate the Playwright screenshot pass into the Go review command
 

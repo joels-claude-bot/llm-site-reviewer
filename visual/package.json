@@ -1,0 +1,14 @@
+{
+  "name": "llm-site-reviewer-visual",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "capture": "node src/cli.mjs",
+    "test": "node --test test/*.test.mjs",
+    "test:model": "node test/model-smoke.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.55.0"
+  }
+}

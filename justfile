@@ -33,3 +33,15 @@ example-batch:
 # review the offsite example with dependency resolution
 example-dependency:
     go run . -mode dependency {{ example_dir }}
+
+# capture one rendered page as overlapping frames
+visual-capture url output="generated/visual":
+    cd visual && npm run capture -- {{ url }} ../{{ output }}
+
+# deterministic browser smoke test for visual segmentation
+visual-test:
+    cd visual && npm test
+
+# opt-in visual model smoke test (requires the configured vision endpoint)
+visual-model-test:
+    cd visual && npm run test:model

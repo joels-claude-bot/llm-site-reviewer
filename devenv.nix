@@ -3,7 +3,7 @@
 {
   dotenv.enable = true;
 
-  # Tools the reviewer's passes shell out to (see docs: /landscape/existing-tools).
+  # Tools the reviewer's passes shell out to (see docs: /appendix/existing-tools).
   packages = [
     pkgs.lychee # deterministic internal/external link + anchor checker (never an LLM)
     pkgs.vale # prose / acronym linter for the content pass
