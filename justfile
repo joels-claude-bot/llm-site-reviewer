@@ -45,3 +45,7 @@ visual-test:
 # opt-in visual model smoke test (requires the configured vision endpoint)
 visual-model-test:
     cd visual && npm run test:model
+
+# review one or more rendered page URLs with the configured vision model
+visual-review *urls:
+    cd visual && npm run review -- {{ urls }}
