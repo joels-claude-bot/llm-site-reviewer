@@ -103,8 +103,8 @@ func TestBuildJsonSchemaProducesValidObjectSchema(t *testing.T) {
 	if schema["type"] != "object" {
 		t.Fatalf("schema type = %v, want object", schema["type"])
 	}
-	if !strings.Contains(string(schemaJSON), `"items"`) {
-		t.Fatalf("schema does not contain items field: %s", schemaJSON)
+	if !strings.Contains(string(schemaJSON), `"results"`) {
+		t.Fatalf("schema does not contain results field: %s", schemaJSON)
 	}
 }
 

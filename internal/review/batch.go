@@ -52,7 +52,7 @@ type MdItem struct {
 
 // response from LLM about reviewing an item
 type MdResponse struct {
-	Items []MdItem `json:"items"`
+	Results []MdItem `json:"results"`
 }
 
 // LiteLLMRequest reviews the docs under paths in one batch: collect the source

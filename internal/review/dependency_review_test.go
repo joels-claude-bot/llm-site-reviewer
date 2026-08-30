@@ -177,7 +177,7 @@ func TestResolvePathsPropagatesChatError(t *testing.T) {
 
 func TestReviewPage(t *testing.T) {
 	client := &fakeChatClient{responses: []string{
-		`{"items":[{"id":0,"name":"a.md","success":true,"errors":[]}]}`,
+		`{"results":[{"id":0,"name":"a.md","success":true,"errors":[]}]}`,
 	}}
 	page := docPage{Path: "a.md", Content: "# A", DependencyPaths: []string{"b.md"}}
 	pages := []docPage{page, {Path: "b.md", Content: "# B"}}

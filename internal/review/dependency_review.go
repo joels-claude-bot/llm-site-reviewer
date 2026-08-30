@@ -204,8 +204,8 @@ func reviewPage(ctx context.Context, client ChatClient, page docPage, byPath map
 	if err := json.Unmarshal([]byte(resp.Text()), &parsed); err != nil {
 		return DependencyResult{}, fmt.Errorf("failed to unmarshal review response for %v: %w", page.Path, err)
 	}
-	slog.Debug("dependency review response parsed", "page_path", page.Path, "item_count", len(parsed.Items))
-	return DependencyResult{PagePath: page.Path, Items: parsed.Items}, nil
+	slog.Debug("dependency review response parsed", "page_path", page.Path, "item_count", len(parsed.Results))
+	return DependencyResult{PagePath: page.Path, Items: parsed.Results}, nil
 }
 
 // dependencyResponseStatus reports whether the resolver could answer for a page.
