@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/joels-claude-bot/llm-site-reviewer/internal/logging"
 	"github.com/joels-claude-bot/llm-site-reviewer/internal/review"
@@ -18,6 +20,9 @@ func main() {
 
 	mode := flag.String("mode", "batch", "review mode: batch, dependency, or visual (rendered page URLs)")
 	recursive := flag.Bool("recursive", false, "batch mode: descend into nested subdirectories (default: only immediate files of each target directory)")
+	dependencyTargets := flag.String("dependency-targets", "", "dependency mode: comma-separated page paths to resolve and review (all pages are still summarised)")
+	dependencySkipImages := flag.Bool("dependency-skip-images", false, "dependency mode: skip image transcription for a content-only run")
+	dependencyRecursive := flag.Bool("dependency-recursive", true, "dependency mode: descend into nested corpus directories")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: inspect [FLAGS] target [target...]\n")
@@ -39,7 +44,20 @@ func main() {
 	case "batch":
 		err = review.LiteLLMRequest(positional, *recursive)
 	case "dependency":
-		err = runDependency(positional)
+		var targets []string
+		if *dependencyTargets != "" {
+			for _, target := range strings.Split(*dependencyTargets, ",") {
+				absolute, absErr := filepath.Abs(strings.TrimSpace(target))
+				if absErr != nil {
+					err = absErr
+					break
+				}
+				targets = append(targets, absolute)
+			}
+		}
+		if err == nil {
+			err = runDependency(positional, targets, *dependencySkipImages, *dependencyRecursive)
+		}
 	case "visual":
 		err = runVisual(positional)
 	default:
@@ -75,13 +93,17 @@ func runVisual(urls []string) error {
 // directories (DependencyReview summarises the pages under all of them and
 // resolves cross-page dependencies across the combined set) and prints the
 // results as a single JSON array, one object per reviewed page.
-func runDependency(paths []string) error {
+func runDependency(paths, targets []string, skipImages, recursive bool) error {
 	client, err := review.NewLLMClient(review.ClientConfigFromEnv(review.ProviderLiteLLMProxy))
 	if err != nil {
 		return fmt.Errorf("failed to build litellm proxy client: %w", err)
 	}
 
-	results, err := review.DependencyReview(context.Background(), client, paths, review.DefaultDependencyConfig())
+	config := review.DefaultDependencyConfig()
+	config.TargetPaths = targets
+	config.SkipImages = skipImages
+	config.Recursive = recursive
+	results, err := review.DependencyReview(context.Background(), client, paths, config)
 	if err != nil {
 		return err
 	}

@@ -44,14 +44,14 @@ const imageSummaryPrompt = "Summarise this image in 200 words or less, covering 
 //
 // docsRoot stays fixed as we descend: it is the docs_dir root that leading-slash
 // image references resolve against, whereas path narrows to the current subtree.
-func summarisePages(ctx context.Context, client ChatClient, path, docsRoot, model string, recursive bool) ([]docPage, error) {
+func summarisePages(ctx context.Context, client ChatClient, path, docsRoot, model string, recursive, skipImages bool) ([]docPage, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stat path %v: %w", path, err)
 	}
 
 	if !info.IsDir() {
-		page, ok, err := pageFromFile(ctx, client, model, path, docsRoot)
+		page, ok, err := pageFromFile(ctx, client, model, path, docsRoot, skipImages)
 		if err != nil {
 			return nil, err
 		}
@@ -73,14 +73,14 @@ func summarisePages(ctx context.Context, client ChatClient, path, docsRoot, mode
 				slog.Debug("skipping subdirectory", "entry_name", entry.Name())
 				continue
 			}
-			nested, err := summarisePages(ctx, client, fullPath, docsRoot, model, recursive)
+			nested, err := summarisePages(ctx, client, fullPath, docsRoot, model, recursive, skipImages)
 			if err != nil {
 				return nil, err
 			}
 			pages = append(pages, nested...)
 			continue
 		}
-		page, ok, err := pageFromFile(ctx, client, model, fullPath, docsRoot)
+		page, ok, err := pageFromFile(ctx, client, model, fullPath, docsRoot, skipImages)
 		if err != nil {
 			return nil, err
 		}
@@ -149,7 +149,7 @@ func summariseImage(ctx context.Context, client ChatClient, model string, imageP
 }
 
 // pageFromFile summarises one file into a docPage - page accepted if ok true.
-func pageFromFile(ctx context.Context, client ChatClient, model string, fullPath, docsRoot string) (docPage, bool, error) {
+func pageFromFile(ctx context.Context, client ChatClient, model string, fullPath, docsRoot string, skipImages bool) (docPage, bool, error) {
 	ext := strings.ToLower(filepath.Ext(fullPath))
 	if ext != ".md" && ext != ".markdown" {
 		slog.Debug("skipping non-markdown dependency review entry", "entry_name", filepath.Base(fullPath), "extension", ext)
@@ -161,9 +161,12 @@ func pageFromFile(ctx context.Context, client ChatClient, model string, fullPath
 		return docPage{}, false, fmt.Errorf("failed to read file %v: %w", fullPath, err)
 	}
 
-	markdownImages, err := ResolveMarkdownImages(content, fullPath, docsRoot)
-	if err != nil {
-		return docPage{}, false, fmt.Errorf("failed to get markdown images from %v: %w", fullPath, err)
+	var markdownImages []MarkdownImage
+	if !skipImages {
+		markdownImages, err = ResolveMarkdownImages(content, fullPath, docsRoot)
+		if err != nil {
+			return docPage{}, false, fmt.Errorf("failed to get markdown images from %v: %w", fullPath, err)
+		}
 	}
 	slog.Debug("found dependency review images", "path", fullPath, "image_count", len(markdownImages))
 

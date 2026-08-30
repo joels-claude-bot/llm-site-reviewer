@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 
 	"github.com/invopop/jsonschema"
 	"github.com/voocel/litellm"
@@ -16,9 +17,11 @@ import (
 const maxDependencies = 5
 
 type DependencyConfig struct {
-	VisionModel string // summarise pages + images, resolve dependency paths
-	ReviewModel string // final content review
-	Recursive   bool   // descend into subdirectories when summarising pages
+	VisionModel string   // summarise pages + images, resolve dependency paths
+	ReviewModel string   // final content review
+	Recursive   bool     // descend into subdirectories when summarising pages
+	SkipImages  bool     // content-only runs do not transcribe referenced images
+	TargetPaths []string // when set, resolve and review only these pages
 }
 
 func DefaultDependencyConfig() DependencyConfig {
@@ -42,29 +45,62 @@ func DependencyReview(ctx context.Context, client ChatClient, rootPaths []string
 	for _, rootPath := range rootPaths {
 		// Each CLI root is its own docs_dir root: leading-slash image references
 		// inside its pages resolve against it (mkdocs semantics).
-		collected, err := summarisePages(ctx, client, rootPath, rootPath, config.VisionModel, config.Recursive)
+		collected, err := summarisePages(ctx, client, rootPath, rootPath, config.VisionModel, config.Recursive, config.SkipImages)
 		if err != nil {
 			return nil, fmt.Errorf("failed to summarise dependency review pages: %w", err)
 		}
 		pages = append(pages, collected...)
 	}
-	resolved, err := resolvePaths(ctx, client, pages, config.VisionModel)
+	targets, err := selectTargetPages(pages, config.TargetPaths)
+	if err != nil {
+		return nil, err
+	}
+	resolved, err := resolvePathsAgainstCorpus(ctx, client, targets, pages, config.VisionModel)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve dependency paths: %w", err)
 	}
-	return reviewPages(ctx, client, resolved, config.ReviewModel)
+	return reviewPagesAgainstCorpus(ctx, client, resolved, pages, config.ReviewModel)
+}
+
+func selectTargetPages(pages []docPage, targetPaths []string) ([]docPage, error) {
+	if len(targetPaths) == 0 {
+		return pages, nil
+	}
+	wanted := make(map[string]bool, len(targetPaths))
+	for _, path := range targetPaths {
+		wanted[filepath.Clean(path)] = true
+	}
+	var selected []docPage
+	for _, page := range pages {
+		if wanted[filepath.Clean(page.Path)] {
+			selected = append(selected, page)
+			delete(wanted, filepath.Clean(page.Path))
+		}
+	}
+	if len(wanted) != 0 {
+		missing := make([]string, 0, len(wanted))
+		for path := range wanted {
+			missing = append(missing, path)
+		}
+		return nil, fmt.Errorf("dependency targets not found: %v", missing)
+	}
+	return selected, nil
 }
 
 func resolvePaths(ctx context.Context, client ChatClient, pages []docPage, model string) ([]docPage, error) {
+	return resolvePathsAgainstCorpus(ctx, client, pages, pages, model)
+}
+
+func resolvePathsAgainstCorpus(ctx context.Context, client ChatClient, pages, corpus []docPage, model string) ([]docPage, error) {
 	format, err := resolverResponseFormat()
 	if err != nil {
 		return nil, err
 	}
-	summaries, err := summariesJSON(pages)
+	summaries, err := summariesJSON(corpus)
 	if err != nil {
 		return nil, err
 	}
-	byPath := pagesByPath(pages)
+	byPath := pagesByPath(corpus)
 
 	// Build the result by value so we never mutate the caller's slice: page is a
 	// copy, and DependencyPaths is replaced (not appended in place), so pages[i]
@@ -102,12 +138,21 @@ func resolvePaths(ctx context.Context, client ChatClient, pages []docPage, model
 
 		page.DependencyPaths = validatePaths(page.Path, parsed.DependencyPaths, byPath)
 		resolved[index] = page
-		slog.Debug("resolved dependency paths", "page_path", page.Path, "dependency_count", len(page.DependencyPaths))
+		slog.Debug(
+			"resolved dependency paths",
+			"page_path", page.Path,
+			"dependency_count", len(page.DependencyPaths),
+			"dependency_paths", page.DependencyPaths,
+		)
 	}
 	return resolved, nil
 }
 
 func reviewPages(ctx context.Context, client ChatClient, pages []docPage, model string) ([]DependencyResult, error) {
+	return reviewPagesAgainstCorpus(ctx, client, pages, pages, model)
+}
+
+func reviewPagesAgainstCorpus(ctx context.Context, client ChatClient, pages, corpus []docPage, model string) ([]DependencyResult, error) {
 	systemPrompt, err := BuildSystemPrompt()
 	if err != nil {
 		return nil, fmt.Errorf("failed to build system prompt: %w", err)
@@ -120,7 +165,7 @@ func reviewPages(ctx context.Context, client ChatClient, pages []docPage, model 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get litellm response format schema: %w", err)
 	}
-	byPath := pagesByPath(pages)
+	byPath := pagesByPath(corpus)
 
 	var results []DependencyResult
 	for _, page := range pages {

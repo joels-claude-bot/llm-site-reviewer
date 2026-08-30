@@ -13,6 +13,7 @@ This record compares three ways of reviewing the Markdown files in `~/politician
 | Batch | Reviews the corpus in one request. | Gemini 3.6 Flash |
 | Dependency | Summarises each page, finds related pages, then reviews the page with those dependencies. | Gemini 2.5 Flash for review; qwen3-vl for the earlier stages |
 | opencode | Gives an agent one complete file per call and lets it inspect the rest of the corpus. | Gemini 2.5 Flash |
+| opencode open-model check | Repeats the same per-file prompt on the four cleaned copies. | Qwen3.5-35B-A3B through OpenRouter |
 
 These runs compare whole systems, not just models: the prompts, context, tools and output limits also differ, and each configuration was run only once. The current opencode run used one general review call per file, capped at five findings, and completed 28 files in about three minutes with four calls running concurrently.
 
@@ -36,6 +37,14 @@ The required set contains content defects that can be confirmed from the files a
 | D18 | `raw_uk_deep_dive.md` | Content is cut off mid-word at lines 92, 225 and 276. |
 | D19 | `index.md` | The line 13 link includes an extra `docs/` segment and resolves to a missing page. |
 | D20 | `10-decision-tree-and-uk-landscape.md` | The five-column table has a two-cell `Verdict` row at line 94. |
+| D21 | `02-backtest-pelosi-cap-clean.md` | The cleaned copy retains KRUZ's 14.5% versus about 18% contradiction. |
+| D22 | `02-backtest-pelosi-cap-clean.md`, `10-decision-tree-cap-clean.md` | The cleaned copies retain NANC's 26.8% versus about 29% contradiction. |
+| D23 | `06-data-sources-cap-clean.md` | The cleaned copy retains the Tussell row's paid/free conflict. |
+| D24 | `index-cap-clean.md` | The cleaned copy still says the numbered documents end at 15. |
+| D25 | `index-cap-clean.md` | The cleaned copy retains the broken relative link. |
+| D26 | `10-decision-tree-cap-clean.md` | The cleaned copy retains the two-cell row under a five-column header. |
+
+D21–D26 use copies of the real pages, not simplified fixtures; each copy fixes only the five findings from its original capped response so the previously unreported defects have a fair chance to appear.
 
 The earlier version of D15 also called “33 diagrams” stale; that was wrong because the directory contains 33 diagrams rendered once as PNG and once as SVG.
 
@@ -53,24 +62,30 @@ D10, a 24.9% versus 25.0% rounding difference, has been removed; rendering-only 
 
 ## Coverage
 
-✅ means the saved response contains the finding, ❌ means it does not, and — means the file was outside that run.
+✅ means the saved response contains the finding, ❌ means it had room but did not, ⚠️ means it reached the five-finding limit, ⛔ means the response was unusable, and — means the file was outside that run.
 
-| # | Defect | Batch | Dependency | opencode per file, fair prompt |
-|---|---|---|---|---|
-| D1 | `raw_backtest_data.md` truncation | ✅ | ✅ | ✅ |
-| D2 | `raw_niche_edge.md` truncation | ✅ | ✅ | ✅ |
-| D3 | `raw_europe_clean.md` truncation | ✅ | ✅ | ✅ |
-| D4 | `raw_broader_clean.md` truncation | ✅ | ✅ | ✅ |
-| D5 | `raw_europe.md` pasted and truncated HTML | ✅ | — | ✅ |
-| D6 | KRUZ 14.5% versus about 18% | ✅ | ✅ | ❌ |
-| D8 | NANC 26.8% versus about 29% | ❌ | ✅ | ❌ |
-| D12 | Tussell row has conflicting columns | ❌ | ✅ | ❌ |
-| D13 | Open Access UK row is duplicated | ❌ | ✅ | ✅ |
-| D14 | PDMR is not expanded | ✅ | ✅ | ✅ |
-| D15 | Index says documents end at 15 | ❌ | ❌ | ❌ |
-| D18 | `raw_uk_deep_dive.md` truncation | — | — | ✅ |
-| D19 | Broken relative link in `index.md` | ❌ | ❌ | ❌ |
-| D20 | Malformed table row in `10-decision-tree-and-uk-landscape.md` | ❌ | ❌ | ❌ |
+| # | Defect | Batch | Dependency | opencode Gemini 2.5 | opencode Qwen3.5-35B-A3B |
+|---|---|---|---|---|---|
+| D1 | `raw_backtest_data.md` truncation | ✅ | ✅ | ✅ | — |
+| D2 | `raw_niche_edge.md` truncation | ✅ | ✅ | ✅ | — |
+| D3 | `raw_europe_clean.md` truncation | ✅ | ✅ | ✅ | — |
+| D4 | `raw_broader_clean.md` truncation | ✅ | ✅ | ✅ | — |
+| D5 | `raw_europe.md` pasted and truncated HTML | ✅ | — | ✅ | — |
+| D6 | KRUZ 14.5% versus about 18% | ✅ | ✅ | ⚠️ | — |
+| D8 | NANC 26.8% versus about 29% | ❌ | ✅ | ⚠️ | — |
+| D12 | Tussell row has conflicting columns | ❌ | ✅ | ⚠️ | — |
+| D13 | Open Access UK row is duplicated | ❌ | ✅ | ✅ | — |
+| D14 | PDMR is not expanded | ✅ | ✅ | ✅ | — |
+| D15 | Index says documents end at 15 | ❌ | ❌ | ⚠️ | — |
+| D18 | `raw_uk_deep_dive.md` truncation | — | — | ✅ | — |
+| D19 | Broken relative link in `index.md` | ❌ | ✅ | ⚠️ | — |
+| D20 | Malformed table row in `10-decision-tree-and-uk-landscape.md` | ❌ | ❌ | ⚠️ | — |
+| D21 | Clean-copy KRUZ contradiction | — | ✅ | ❌ | ⚠️ |
+| D22 | Clean-copy NANC contradiction | — | ❌ (✅ with only the two relevant files) | ❌ | ⚠️ |
+| D23 | Clean-copy Tussell conflict | — | ❌ | ⚠️ | ❌ |
+| D24 | Clean-copy stale document range | — | ✅ | ❌ | ❌ |
+| D25 | Clean-copy broken relative link | — | ❌ | ❌ | ❌ |
+| D26 | Clean-copy malformed table row | — | ❌ | ⚠️ | ⛔ |
 
 The dependency results were previously transcribed incorrectly: `/tmp/dep-output.txt` explicitly reports both D13 and the D9 candidate, at lines 595 and 1265 respectively.
 
@@ -82,8 +97,14 @@ The “283 findings” reported for dependency mode are repeated review items ac
 
 - Among the graded fixtures in its scope, batch found every confirmed single-page prose defect except the two table faults, stale document range, broken link and malformed table row.
 - Dependency had the best coverage here, but its output included many repeated acronym and unverifiable-link findings.
-- The fair per-file opencode run caught 8 of 14 confirmed defect groups: every truncation group, D13 and D14.
-- The same run returned 131 findings and used all five slots on many pages for acronyms, while missing D6, D8, D12, D15, D19 and D20.
+- The fair per-file opencode run reported every truncation group, D13 and D14.
+- Its apparent misses on D6, D8, D12, D15, D19 and D20 are inconclusive because their target responses reached the five-finding limit.
+- Cleaned copies removed the original five reported findings: KRUZ, NANC, the stale range and the broken link were still absent from responses with spare capacity, so those are genuine misses in this run.
+- The Tussell and malformed-row copies continued to fill all five slots with new acronym and jargon findings after two cleanup rounds, so those results remain inconclusive.
+- The targeted content-only dependency run caught the clean-copy KRUZ contradiction and stale document range, but missed the other four clean-copy defects.
+- A focused dependency rerun containing only the two D22 pages selected each as the other's dependency and reported the 26.8% versus about 29% contradiction.
+- Qwen filled the Pelosi response with unrelated findings, returned no findings for the data-source and index copies, and failed to produce the requested JSON for the decision-tree copy.
+- Gemma 4 26B A4B was also tried: it missed the required defects on three files and incorrectly asked for another chunk of the complete index file.
 - The single all-corpus opencode call ran out of output space after its first review, so one bounded call per file is the viable shape.
 - A checkmark records one saved response, not a model's general ability to find that defect.
 
@@ -95,4 +116,4 @@ The “283 findings” reported for dependency mode are repeated review items ac
 
 ## Performance note
 
-Dependency mode is slower because it makes several calls per document and transcribes images before review; its independent per-file stages can be parallelised and image work can be skipped for a content-only run.
+Dependency mode is slower because it makes several calls per document; the targeted content-only run skipped images and reviewed only four pages, but its 32 corpus summaries still ran sequentially.

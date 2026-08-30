@@ -40,7 +40,7 @@ func TestSummariseDependencyPages(t *testing.T) {
 	writeFile(t, dir, "route.svg", "<svg>route</svg>")
 
 	client := &fakeChatClient{responses: []string{"route summary", "page summary"}}
-	pages, err := summarisePages(context.Background(), client, dir, dir, "summary-model", true)
+	pages, err := summarisePages(context.Background(), client, dir, dir, "summary-model", true, false)
 	if err != nil {
 		t.Fatalf("summarisePages returned error: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestSummarisePagesRecursiveDescendsIntoSubdirs(t *testing.T) {
 
 	// Non-recursive: only the top-level page is collected, the nested dir is skipped.
 	client := &fakeChatClient{responses: []string{"top summary"}}
-	pages, err := summarisePages(context.Background(), client, dir, dir, "summary-model", false)
+	pages, err := summarisePages(context.Background(), client, dir, dir, "summary-model", false, false)
 	if err != nil {
 		t.Fatalf("summarisePages(recursive=false) returned error: %v", err)
 	}
@@ -79,7 +79,7 @@ func TestSummarisePagesRecursiveDescendsIntoSubdirs(t *testing.T) {
 
 	// Recursive: the nested page is collected too.
 	client = &fakeChatClient{responses: []string{"top summary", "deep summary"}}
-	pages, err = summarisePages(context.Background(), client, dir, dir, "summary-model", true)
+	pages, err = summarisePages(context.Background(), client, dir, dir, "summary-model", true, false)
 	if err != nil {
 		t.Fatalf("summarisePages(recursive=true) returned error: %v", err)
 	}
