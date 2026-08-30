@@ -5,32 +5,38 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
-	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/invopop/jsonschema"
+	"github.com/joels-claude-bot/llm-site-reviewer/internal/controlledreview"
 	"github.com/joels-claude-bot/llm-site-reviewer/internal/logging"
+	"github.com/joels-claude-bot/llm-site-reviewer/internal/opencodereview"
 	"github.com/joels-claude-bot/llm-site-reviewer/internal/review"
 	"github.com/joels-claude-bot/llm-site-reviewer/internal/visual"
-	"github.com/sst/opencode-sdk-go"
-	"github.com/sst/opencode-sdk-go/option"
 )
 
 func main() {
 	logging.InitFromEnv()
 
-	mode := flag.String("mode", "batch", "review mode: batch, dependency, opencode, or visual")
+	mode := flag.String("mode", "batch", "review mode: batch, dependency, opencode, controlled, or visual")
 	recursive := flag.Bool("recursive", false, "batch mode: descend into nested subdirectories (default: only immediate files of each target directory)")
 	model := flag.String("model", "litellm/gemini-flash", "opencode mode: provider/model to use")
 	opencodeURL := flag.String("opencode-url", "http://127.0.0.1:4096", "opencode mode: server URL")
 	opencodeVerbose := flag.Bool("opencode-verbose", false, "opencode mode: log file-discovery and read tool calls")
 	opencodeTimeout := flag.Duration("opencode-timeout", 15*time.Minute, "opencode mode: overall session creation and prompt timeout")
 	opencodeEvidence := flag.String("opencode-evidence", "", "opencode mode: comma-separated workspace-relative evidence files; disables search and permits only reads")
+	controlledPatterns := flag.Int("controlled-max-patterns", 5, "controlled mode: maximum model-selected search patterns")
+	controlledMatches := flag.Int("controlled-max-matches", 20, "controlled mode: maximum snippets per search pattern")
+	controlledEvidence := flag.Int("controlled-max-evidence", 5, "controlled mode: maximum evidence pages")
+	controlledImageWorkers := flag.Int("controlled-image-workers", 4, "controlled mode: concurrent local image transcriptions")
+	controlledImageCache := flag.String("controlled-image-cache", "", "controlled mode: image transcription cache path (default: <repo>/.llm-site-reviewer/image-transcriptions.json)")
+	controlledDocsRoot := flag.String("controlled-docs-root", "", "controlled mode: docs root for leading-slash image references (default: repository root)")
+	controlledVisionModel := flag.String("controlled-vision-model", "qwen3-vl", "controlled mode: LiteLLM vision model for changed raster images")
 	dependencyTargets := flag.String("dependency-targets", "", "dependency mode: comma-separated page paths to resolve and review (all pages are still summarised)")
 	dependencySkipImages := flag.Bool("dependency-skip-images", false, "dependency mode: skip image transcription for a content-only run")
 	dependencyRecursive := flag.Bool("dependency-recursive", true, "dependency mode: descend into nested corpus directories")
@@ -86,11 +92,28 @@ func main() {
 				evidence = append(evidence, path)
 			}
 		}
-		err = runOpenCode(ctx, positional[0], *model, *opencodeURL, evidence, *opencodeVerbose)
+		err = opencodereview.Run(ctx, opencodereview.Config{
+			Target: positional[0], Model: *model, BaseURL: *opencodeURL,
+			Evidence: evidence, Verbose: *opencodeVerbose, Output: os.Stdout, TraceOutput: os.Stderr,
+		})
+	case "controlled":
+		if len(positional) != 1 {
+			err = fmt.Errorf("controlled mode requires exactly one target file")
+			break
+		}
+		if *opencodeTimeout <= 0 {
+			err = fmt.Errorf("opencode-timeout must be positive")
+			break
+		}
+		err = runControlled(positional[0], *model, *opencodeURL, *opencodeTimeout, *opencodeVerbose, controlledreview.Config{
+			MaxPatterns: *controlledPatterns, MaxMatchesPerPattern: *controlledMatches,
+			MaxEvidenceFiles: *controlledEvidence, ImageWorkers: *controlledImageWorkers,
+			ImageCachePath: *controlledImageCache, DocsRoot: *controlledDocsRoot,
+		}, *controlledVisionModel)
 	case "visual":
 		err = runVisual(positional)
 	default:
-		fmt.Fprintf(os.Stderr, "unknown mode %q (want batch or dependency)\n\n", *mode)
+		fmt.Fprintf(os.Stderr, "unknown mode %q (want batch, dependency, opencode, controlled, or visual)\n\n", *mode)
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -101,302 +124,67 @@ func main() {
 
 }
 
-type openCodePrompt struct {
-	Model  openCodeModel   `json:"model"`
-	Format openCodeFormat  `json:"format"`
-	Parts  []openCodePart  `json:"parts"`
-	Tools  map[string]bool `json:"tools"`
+type lazyImageTranscriber struct {
+	model  string
+	once   sync.Once
+	client review.ChatClient
+	err    error
 }
 
-type openCodeModel struct {
-	ProviderID string `json:"providerID"`
-	ModelID    string `json:"modelID"`
+func (t *lazyImageTranscriber) TranscribeImage(ctx context.Context, path string, content []byte) (string, error) {
+	t.once.Do(func() {
+		t.client, t.err = review.NewLLMClient(review.ClientConfigFromEnv(review.ProviderLiteLLMProxy))
+	})
+	if t.err != nil {
+		return "", t.err
+	}
+	return review.TranscribeImage(ctx, t.client, t.model, path, content)
 }
 
-type openCodeFormat struct {
-	Type       string `json:"type"`
-	Schema     any    `json:"schema"`
-	RetryCount int    `json:"retryCount"`
-}
-
-type openCodePart struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
-}
-
-type openCodeResponse struct {
-	Info struct {
-		Structured json.RawMessage `json:"structured"`
-		Error      json.RawMessage `json:"error"`
-		Finish     string          `json:"finish"`
-	} `json:"info"`
-	Parts json.RawMessage `json:"parts"`
-}
-
-func runOpenCode(ctx context.Context, target, model, baseURL string, evidence []string, verbose bool) error {
-	target, err := filepath.Abs(target)
+func runControlled(target, model, baseURL string, timeout time.Duration, verbose bool, cfg controlledreview.Config, visionModel string) error {
+	targetAbs, err := filepath.Abs(target)
 	if err != nil {
-		return fmt.Errorf("resolve target path: %w", err)
+		return err
 	}
-	if info, err := os.Stat(target); err != nil || info.IsDir() {
-		return fmt.Errorf("opencode target must be a file: %s", target)
-	}
-	providerID, modelID, ok := strings.Cut(model, "/")
-	if !ok || providerID == "" || modelID == "" {
-		return fmt.Errorf("model must be provider/model, got %q", model)
-	}
-
-	workspace := findProjectRoot(filepath.Dir(target))
-	for index, path := range evidence {
-		absolute := path
-		if !filepath.IsAbs(absolute) {
-			absolute = filepath.Join(workspace, filepath.FromSlash(path))
-		}
-		absolute, err = filepath.Abs(absolute)
-		if err != nil || !strings.HasPrefix(absolute, workspace+string(filepath.Separator)) {
-			return fmt.Errorf("evidence path must be inside workspace: %q", path)
-		}
-		if info, statErr := os.Stat(absolute); statErr != nil || info.IsDir() {
-			return fmt.Errorf("evidence path must be a readable file: %q", path)
-		}
-		evidence[index], err = filepath.Rel(workspace, absolute)
-		if err != nil {
-			return fmt.Errorf("resolve evidence path %q: %w", path, err)
+	workspace := opencodereview.FindProjectRoot(filepath.Dir(targetAbs))
+	cfg.Root = workspace
+	if cfg.DocsRoot == "" {
+		cfg.DocsRoot = workspace
+		candidate := filepath.Join(workspace, "docs")
+		if rel, relErr := filepath.Rel(candidate, targetAbs); relErr == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			cfg.DocsRoot = candidate
 		}
 	}
-	client := opencode.NewClient(option.WithBaseURL(baseURL))
-	session, err := client.Session.New(ctx, opencode.SessionNewParams{
-		Directory: opencode.F(workspace),
-		Title:     opencode.F("documentation review"),
+	if cfg.ImageCachePath == "" {
+		cfg.ImageCachePath = filepath.Join(workspace, ".llm-site-reviewer", "image-transcriptions.json")
+	}
+	var traceOutput io.Writer
+	if verbose {
+		traceOutput = os.Stderr
+		cfg.TraceOutput = traceOutput
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	phaseModel, err := opencodereview.NewControlledPhaseModel(ctx, opencodereview.ControlledConfig{
+		BaseURL: baseURL, Model: model, Workspace: workspace, TraceOutput: traceOutput,
 	})
 	if err != nil {
-		return fmt.Errorf("create opencode session at %s: %w", baseURL, err)
+		return err
 	}
-
-	reflector := &jsonschema.Reflector{DoNotReference: true, ExpandedStruct: true}
-	exploration := `You may use only glob, grep and read. Read the target once. Use at most five focused grep calls and one glob call for its most distinctive entities, dates and quantities. Then stop searching and use at most five additional read calls on the strongest candidate evidence before returning the result. Combine related terms in each grep, do not re-read files, and do not survey the whole repository.`
-	tools := readOnlyOpenCodeTools(true)
-	if len(evidence) > 0 {
-		exploration = fmt.Sprintf("Use the read tool only. Read the target once, then read only these preselected evidence files; do not inspect any other file:\n- %s", strings.Join(evidence, "\n- "))
-		tools = readOnlyOpenCodeTools(false)
+	engine, err := controlledreview.New(cfg, phaseModel, &lazyImageTranscriber{model: visionModel})
+	if err != nil {
+		return err
 	}
-	prompt := fmt.Sprintf(`Review %s for genuine reader-facing content defects.
-
-This is a bounded, read-only review. %s
-
-Use other Markdown files in the repository as evidence. Find pages discussing the same entities, dates, quantities, performance figures or factual claims, and compare their relevant text with the target. Report clear contradictions, incorrect claims, stale references and malformed content. Do not assume only explicitly linked pages are relevant.
-
-Base every finding only on repository content. Do not browse the web, run shell commands, edit files, create plans, invoke skills or subagents, or assess rendering. Ignore stylistic preferences, harmless rounding differences and claims covering different periods or scopes.
-
-Return exactly one result for the target: id 0, name %q, success false when errors are present and true otherwise. Put at most five concrete findings, ordered by importance, in that result's errors array. Use uppercase category codes such as CONTRADICTS_PAGE, WRONG_CLAIM, STALE_REF or OTHER.`, target, exploration, filepath.Base(target))
-	request := openCodePrompt{
-		Model:  openCodeModel{ProviderID: providerID, ModelID: modelID},
-		Format: openCodeFormat{Type: "json_schema", Schema: reflector.Reflect(&review.MdResponse{}), RetryCount: 1},
-		Parts:  []openCodePart{{Type: "text", Text: prompt}},
-		Tools:  tools,
-	}
-	if verbose {
-		encodedSchema, marshalErr := json.Marshal(request.Format.Schema)
-		if marshalErr != nil {
-			return fmt.Errorf("marshal opencode output schema: %w", marshalErr)
-		}
-		fmt.Fprintf(os.Stderr, "opencode trace: output schema: %s\n", encodedSchema)
-	}
-	stopTrace := func() {}
-	if verbose {
-		stopTrace = startOpenCodeTrace(ctx, client, session.ID, workspace)
-	}
-	defer stopTrace()
-	var response openCodeResponse
-	path := fmt.Sprintf("session/%s/message?directory=%s", session.ID, url.QueryEscape(workspace))
-	if err := client.Execute(ctx, http.MethodPost, path, request, &response); err != nil {
-		return fmt.Errorf("prompt opencode session: %w", err)
-	}
-	stopTrace()
-	if len(response.Info.Structured) == 0 || string(response.Info.Structured) == "null" {
-		if verbose {
-			fmt.Fprintf(os.Stderr, "opencode trace: response finish=%q error=%s parts=%s\n", response.Info.Finish, printableJSON(response.Info.Error), printableJSON(response.Parts))
-		}
-		if message := openCodeErrorMessage(response.Info.Error); message != "" {
-			return fmt.Errorf("opencode assistant error: %s", message)
-		}
-		return fmt.Errorf("opencode returned no structured output")
-	}
-	var result review.MdResponse
-	if err := json.Unmarshal(response.Info.Structured, &result); err != nil {
-		if verbose {
-			fmt.Fprintf(os.Stderr, "opencode trace: raw structured output: %s\n", response.Info.Structured)
-		}
-		return fmt.Errorf("decode structured output: %w", err)
-	}
-	if err := validateOpenCodeResult(result, filepath.Base(target)); err != nil {
-		if verbose {
-			fmt.Fprintf(os.Stderr, "opencode trace: invalid structured output: %s\n", response.Info.Structured)
-		}
-		return fmt.Errorf("validate structured output: %w", err)
+	result, err := engine.Run(ctx, targetAbs)
+	if err != nil {
+		return err
 	}
 	encoded, err := json.MarshalIndent(result, "", "  ")
 	if err != nil {
-		return fmt.Errorf("marshal structured output: %w", err)
+		return err
 	}
 	fmt.Println(string(encoded))
 	return nil
-}
-
-func readOnlyOpenCodeTools(search bool) map[string]bool {
-	return map[string]bool{
-		"read": true, "grep": search, "glob": search,
-		"bash": false, "edit": false, "write": false, "apply_patch": false,
-		"webfetch": false, "websearch": false, "lsp": false, "task": false,
-		"skill": false, "todowrite": false, "question": false,
-	}
-}
-
-func printableJSON(value json.RawMessage) string {
-	if len(value) == 0 {
-		return "<missing>"
-	}
-	return string(value)
-}
-
-func openCodeErrorMessage(raw json.RawMessage) string {
-	if len(raw) == 0 || string(raw) == "null" {
-		return ""
-	}
-	var response struct {
-		Name string `json:"name"`
-		Data struct {
-			Message    string `json:"message"`
-			StatusCode int    `json:"statusCode"`
-		} `json:"data"`
-	}
-	if json.Unmarshal(raw, &response) != nil || response.Data.Message == "" {
-		return string(raw)
-	}
-	if response.Data.StatusCode != 0 {
-		return fmt.Sprintf("%s: %s (HTTP %d)", response.Name, response.Data.Message, response.Data.StatusCode)
-	}
-	return fmt.Sprintf("%s: %s", response.Name, response.Data.Message)
-}
-
-func validateOpenCodeResult(response review.MdResponse, targetName string) error {
-	if len(response.Results) != 1 {
-		return fmt.Errorf("got %d results, want exactly 1", len(response.Results))
-	}
-	result := response.Results[0]
-	if result.Id != 0 || result.Name != targetName {
-		return fmt.Errorf("result identity is id=%d name=%q, want id=0 name=%q", result.Id, result.Name, targetName)
-	}
-	if len(result.Errors) > 5 {
-		return fmt.Errorf("got %d findings, maximum is 5", len(result.Errors))
-	}
-	if result.Success != (len(result.Errors) == 0) {
-		return fmt.Errorf("success=%t disagrees with %d findings", result.Success, len(result.Errors))
-	}
-	for index, finding := range result.Errors {
-		if strings.TrimSpace(string(finding.Category)) == "" || strings.TrimSpace(finding.Notes) == "" {
-			return fmt.Errorf("finding %d has an empty category or notes", index)
-		}
-	}
-	return nil
-}
-
-func startOpenCodeTrace(ctx context.Context, client *opencode.Client, sessionID, workspace string) func() {
-	traceCtx, cancel := context.WithCancel(ctx)
-	stream := client.Event.ListStreaming(traceCtx, opencode.EventListParams{Directory: opencode.F(workspace)})
-	done := make(chan struct{})
-	type traceTiming struct {
-		startedAt   time.Time
-		lastEventAt time.Time
-	}
-	timing := make(chan traceTiming, 1)
-	go func() {
-		seenRunning := make(map[string]bool)
-		seenFinished := make(map[string]bool)
-		traceStarted := time.Now()
-		lastToolEvent := traceStarted
-		defer func() {
-			timing <- traceTiming{startedAt: traceStarted, lastEventAt: lastToolEvent}
-			close(done)
-		}()
-		for stream.Next() {
-			event, ok := stream.Current().AsUnion().(opencode.EventListResponseEventMessagePartUpdated)
-			if !ok {
-				continue
-			}
-			part, ok := event.Properties.Part.AsUnion().(opencode.ToolPart)
-			if !ok || part.SessionID != sessionID {
-				continue
-			}
-			if part.Tool != "glob" && part.Tool != "grep" && part.Tool != "read" {
-				continue
-			}
-
-			now := time.Now()
-			switch state := part.State.AsUnion().(type) {
-			case opencode.ToolStateRunning:
-				if seenRunning[part.ID] {
-					continue
-				}
-				seenRunning[part.ID] = true
-				fmt.Fprintf(os.Stderr, "opencode trace: +%s (gap %s) %s started input=%s\n",
-					now.Sub(traceStarted).Round(time.Millisecond), now.Sub(lastToolEvent).Round(time.Millisecond), part.Tool, compactJSON(state.Input))
-				lastToolEvent = now
-			case opencode.ToolStateCompleted:
-				if seenFinished[part.ID] {
-					continue
-				}
-				seenFinished[part.ID] = true
-				duration := time.Duration(state.Time.End-state.Time.Start) * time.Millisecond
-				fmt.Fprintf(os.Stderr, "opencode trace: +%s (gap %s) %s completed in %s input=%s\n",
-					now.Sub(traceStarted).Round(time.Millisecond), now.Sub(lastToolEvent).Round(time.Millisecond), part.Tool, duration.Round(time.Millisecond), compactJSON(state.Input))
-				lastToolEvent = now
-			case opencode.ToolStateError:
-				if seenFinished[part.ID] {
-					continue
-				}
-				seenFinished[part.ID] = true
-				duration := time.Duration(state.Time.End-state.Time.Start) * time.Millisecond
-				fmt.Fprintf(os.Stderr, "opencode trace: +%s (gap %s) %s failed in %s error=%q input=%s\n",
-					now.Sub(traceStarted).Round(time.Millisecond), now.Sub(lastToolEvent).Round(time.Millisecond), part.Tool, duration.Round(time.Millisecond), state.Error, compactJSON(state.Input))
-				lastToolEvent = now
-			}
-		}
-	}()
-	stopped := false
-	return func() {
-		if stopped {
-			return
-		}
-		stopped = true
-		responseAt := time.Now()
-		cancel()
-		_ = stream.Close()
-		<-done
-		measured := <-timing
-		fmt.Fprintf(os.Stderr, "opencode trace: response returned +%s (gap since last tool event %s)\n",
-			responseAt.Sub(measured.startedAt).Round(time.Millisecond), responseAt.Sub(measured.lastEventAt).Round(time.Millisecond))
-	}
-}
-
-func compactJSON(value interface{}) string {
-	encoded, err := json.Marshal(value)
-	if err != nil {
-		return fmt.Sprintf("%q", fmt.Sprint(value))
-	}
-	return string(encoded)
-}
-
-func findProjectRoot(start string) string {
-	for current := start; ; current = filepath.Dir(current) {
-		if _, err := os.Stat(filepath.Join(current, ".git")); err == nil {
-			return current
-		}
-		parent := filepath.Dir(current)
-		if parent == current {
-			return start
-		}
-	}
 }
 
 func runVisual(urls []string) error {

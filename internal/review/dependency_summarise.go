@@ -148,6 +148,17 @@ func summariseImage(ctx context.Context, client ChatClient, model string, imageP
 	return docImage{Path: imagePath, Summary: resp.Text()}, nil
 }
 
+// TranscribeImage exposes the existing image transcription path to review
+// orchestrators that manage image discovery and caching themselves. It sends
+// SVG source as text and raster formats as image bytes.
+func TranscribeImage(ctx context.Context, client ChatClient, model, imagePath string, content []byte) (string, error) {
+	image, err := summariseImage(ctx, client, model, imagePath, content)
+	if err != nil {
+		return "", err
+	}
+	return image.Summary, nil
+}
+
 // pageFromFile summarises one file into a docPage - page accepted if ok true.
 func pageFromFile(ctx context.Context, client ChatClient, model string, fullPath, docsRoot string, skipImages bool) (docPage, bool, error) {
 	ext := strings.ToLower(filepath.Ext(fullPath))
