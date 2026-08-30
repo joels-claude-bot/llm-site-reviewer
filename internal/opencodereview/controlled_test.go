@@ -1,6 +1,7 @@
 package opencodereview
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -82,6 +83,30 @@ func TestNoToolsDisablesReadAndSearch(t *testing.T) {
 	for _, name := range []string{"read", "grep", "glob", "bash", "task", "webfetch"} {
 		if enabled, exists := tools[name]; !exists || enabled {
 			t.Fatalf("tool %q: exists=%t enabled=%t", name, exists, enabled)
+		}
+	}
+}
+
+func TestControlledPhaseModelTracesRawResponseWhenStructuredOutputIsMissing(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"info":{"structured":null,"finish":"stop"},"parts":[{"type":"text","text":"plain JSON-ish output"}]}`))
+	}))
+	defer server.Close()
+
+	var trace bytes.Buffer
+	m := &ControlledPhaseModel{
+		client: opencode.NewClient(option.WithBaseURL(server.URL)), sessionID: "session-1", workspace: "/repo",
+		model: model{ProviderID: "ollama", ModelID: "test"}, traceOutput: &trace,
+	}
+	_, err := m.ChooseSearchPatterns(context.Background(), controlledreview.SearchInput{MaxPatterns: 5})
+	if err == nil {
+		t.Fatal("expected missing structured output error")
+	}
+	got := trace.String()
+	for _, want := range []string{`search patterns raw response`, `finish="stop"`, `structured=null`, `plain JSON-ish output`} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("trace %q does not contain %q", got, want)
 		}
 	}
 }

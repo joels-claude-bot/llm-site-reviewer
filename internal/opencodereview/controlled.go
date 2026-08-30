@@ -155,15 +155,27 @@ func (m *ControlledPhaseModel) structured(ctx context.Context, phase, text strin
 		fmt.Fprintf(m.traceOutput, "opencode controlled trace: %s completed in %s\n", phase, time.Since(started).Round(time.Millisecond))
 	}
 	if len(resp.Info.Structured) == 0 || string(resp.Info.Structured) == "null" {
+		m.traceFailedResponse(phase, resp)
 		if message := errorMessage(resp.Info.Error); message != "" {
 			return fmt.Errorf("%s assistant error: %s", phase, message)
 		}
 		return fmt.Errorf("%s returned no structured output", phase)
 	}
 	if err := json.Unmarshal(resp.Info.Structured, out); err != nil {
+		m.traceFailedResponse(phase, resp)
 		return fmt.Errorf("decode %s structured output: %w", phase, err)
 	}
 	return nil
+}
+
+func (m *ControlledPhaseModel) traceFailedResponse(phase string, resp response) {
+	if m.traceOutput == nil {
+		return
+	}
+	fmt.Fprintf(m.traceOutput,
+		"opencode controlled trace: %s raw response finish=%q structured=%s error=%s parts=%s\n",
+		phase, resp.Info.Finish, printable(resp.Info.Structured), printable(resp.Info.Error), printable(resp.Parts),
+	)
 }
 
 func noTools() map[string]bool {
