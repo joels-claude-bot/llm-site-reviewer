@@ -93,6 +93,33 @@ For completeness, the fair opencode run reported D7, dependency reported D9, and
 
 The “283 findings” reported for dependency mode are repeated review items across dependency contexts, not 283 distinct defects.
 
+## Agent-run stability
+
+These runs targeted only `10-decision-tree-cap-clean.md`; OpenCode chose which other files to inspect. 🟢 is a supported contradiction, 🟡 is plausible but weak or needs validation, and 🔴 is wrong or unusable.
+
+| Gemini 2.5 Flash — run 1 | Gemini 2.5 Flash — run 2 | Qwen3.5-35B-A3B — run 1 | Qwen3.5-35B-A3B — run 2 |
+|---|---|---|---|
+| 🟡 D6 is presented as the landing point but later research says it is an end-state, not the initial build. | 🟢 NANC's 2024 return is about 29% here and 26.8% in the backtest. | 🔴 Returned no defects despite reading the target and the backtest containing the NANC figure. | 🔴 Failed to return structured output. |
+| 🔴 A newer competitor-research date does not by itself make the target stale. | 🟢 Beauhurst revenue is called undisclosed despite exact turnover appearing in its profile. | — | — |
+| — | 🟡 Calling Smart Insider a UK director-dealings pure-play is questionable because it also sells US politicians data. | — | — |
+| — | 🟢 D6 is presented as the current recommendation elsewhere but as an eventual shape rather than the MVP. | — | — |
+| — | 🟢 Hedge funds are called plausible D6 buyers here but rejected as cross-vertical buyers in the MVP analysis. | — | — |
+
+Gemini found D22 in one of these two structured runs. Qwen's first trace shows that reading the correct evidence does not guarantee that the model will report it.
+
+### Additional model runs
+
+The same target and prompt were run twice per model. Content quality and structured-output compliance are recorded separately.
+
+| Model | Run 1 | Run 2 | D22 | Output compliance |
+|---|---|---|---|---|
+| Qwen3.5-27B dense | 🟡 Read the relevant backtest, but wrapped the result incorrectly and the claims could not be recovered before raw-output logging was added. | 🟢 Found NANC 29% versus 26.8%; 🟢 found the later Dragonfly divestment; 🟡 made a weak Beauhurst staleness claim. | 1/2 confirmed | 🔴 Both runs encoded the `items` array as a string rather than an array. |
+| Qwen3-Coder-Next 80B-A3B | 🔴 Read several strategic pages but returned no structured result. | 🔴 Read the backtest containing D22 but returned no structured result. | 0/2 observable | 🔴 No structured output in either run. |
+| Llama 3.3 70B Instruct | 🔴 Returned vague claims without evidence after reading only the target. | 🔴 Invented `5-overview.md` and unsupported market-share and 2020 claims. | 0/2 | 🟢 Schema-valid but substantively unusable. |
+| Qwen3.5-27B dense, direct OpenRouter | 🟢 Found NANC 29% versus 26.8% and the mnAi founding-date discrepancy; 🔴 treated missing corroboration as proof that three other claims were wrong. | — | 1/1 confirmed | 🔴 A wire capture proved OpenCode sent the array schema correctly, but OpenRouter's AtlasCloud backend returned `items` as a string and OpenCode accepted it. |
+
+Dense Qwen's second run is the clearest positive result: it found D22, but exposed a schema-adherence problem in this OpenCode/provider combination. The 70B result shows that parameter count alone does not compensate for poor tool selection or evidence discipline.
+
 ## Findings
 
 - Among the graded fixtures in its scope, batch found every confirmed single-page prose defect except the two table faults, stale document range, broken link and malformed table row.
