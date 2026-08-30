@@ -3,6 +3,15 @@ title: Approach
 ---
 
 # Approach
+
+## Review approaches
+
+| Approach | Description | Pros | Cons |
+|---|---|---|---|
+| Batch | Send all files in one API call. | Simple; the model sees every file directly. | Results degrade as the corpus grows and relevant facts are diluted. |
+| Dependency | Summarise files and hand-roll dependency resolution before reviewing each target. | Most control over dependency selection and context size. | Brittle; summaries are lossy and dependency resolution can miss the right evidence. |
+| OpenCode | Use an agent harness to find and read dependencies for each target. | The agent can search the corpus and choose full files with its own tools. | Less deterministic and relies on an external tool. |
+
 ## Model Selection
 
 The [spec](/spec/reference) says *what* to catch. This is *how*
@@ -41,4 +50,3 @@ Thus the process becomes
 
 
 ## Workflow
-
