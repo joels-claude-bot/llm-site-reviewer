@@ -1,146 +1,123 @@
 ---
-title: "ADR 0007: Review modes and defect coverage"
+title: "ADR 0007: OpenCode review modes and structured output"
 ---
 
-# ADR 0007: Review modes and defect coverage
+# ADR 0007: OpenCode review modes and structured output
 
-Status: Draft (2026-08-29)
+Status: Accepted (2026-08-30)
 
-This record compares three ways of reviewing the Markdown files in `~/politician-trading-research/docs`.
+## Context
 
-| Mode | What it does | Model in this run |
-|---|---|---|
-| Batch | Reviews the corpus in one request. | Gemini 3.6 Flash |
-| Dependency | Summarises each page, finds related pages, then reviews the page with those dependencies. | Gemini 2.5 Flash for review; qwen3-vl for the earlier stages |
-| opencode | Gives an agent one complete file per call and lets it inspect the rest of the corpus. | Gemini 2.5 Flash |
-| opencode open-model check | Repeats the same per-file prompt on the four cleaned copies. | Qwen3.5-35B-A3B through OpenRouter |
+The reviewer needs to compare one Markdown page with related repository content
+and return `MdResponse` as JSON Schema-constrained output. A single context dump
+has poor recall, while an unrestricted agent can spend minutes repeatedly using
+cheap filesystem tools.
 
-These runs compare whole systems, not just models: the prompts, context, tools and output limits also differ, and each configuration was run only once. The current opencode run used one general review call per file, capped at five findings, and completed 28 files in about three minutes with four calls running concurrently.
+Provider behaviour matters as much as model quality. Sending the same schema to
+an OpenAI-compatible endpoint does not guarantee that the provider enforces it.
+In particular, OpenRouter-backed Qwen runs returned arrays encoded as strings or
+no structured result even though the captured request contained the correct
+schema. Prompt wording did not repair that transport/provider mismatch.
 
-## Defects used for grading
+OpenCode's direct providers do support the `body.format` structured-output path.
+The Go implementation generates the schema from `review.MdResponse`; it does not
+maintain a second handwritten response schema.
 
-The required set contains content defects that can be confirmed from the files alone.
+## Decision
 
-| # | File | Defect |
-|---|---|---|
-| D1 | `raw_backtest_data.md` | Boilerplate is cut off mid-word at lines 148 and 578. |
-| D2 | `raw_niche_edge.md` | Boilerplate is cut off mid-word at lines 146, 964, 1096 and 1164. |
-| D3 | `raw_europe_clean.md` | Several passages are cut off mid-word, including lines 80, 100 and 122. |
-| D4 | `raw_broader_clean.md` | Many mid-file passages are cut off mid-word or mid-sentence, and the file ends halfway through a sentence at line 671. |
-| D5 | `raw_europe.md` | Two pasted HTML blocks are cut off mid-tag, and prose is cut off at line 812. |
-| D6 | `02-backtest-pelosi-copy.md` | KRUZ's 2024 return is 14.5% at line 20 and about 18% at line 70. |
-| D8 | `02-backtest-pelosi-copy.md`, `10-decision-tree-and-uk-landscape.md`, `RESEARCH.md` | NANC's 2024 return is 26.8% in the first file and about 29% in the other two. |
-| D12 | `06-data-sources.md` | The Tussell row puts “Paid (commercial)” in the API column and “Free” in the cost column. |
-| D13 | `06-data-sources.md` | Open Access UK appears twice in the same table. |
-| D14 | `01-us-vs-uk-comparison.md` | PDMR is used several times without being expanded on the page. |
-| D15 | `index.md` | The project tree says the numbered documents end at 15, but `16-next-step.md` exists. |
-| D18 | `raw_uk_deep_dive.md` | Content is cut off mid-word at lines 92, 225 and 276. |
-| D19 | `index.md` | The line 13 link includes an extra `docs/` segment and resolves to a missing page. |
-| D20 | `10-decision-tree-and-uk-landscape.md` | The five-column table has a two-cell `Verdict` row at line 94. |
-| D21 | `02-backtest-pelosi-cap-clean.md` | The cleaned copy retains KRUZ's 14.5% versus about 18% contradiction. |
-| D22 | `02-backtest-pelosi-cap-clean.md`, `10-decision-tree-cap-clean.md` | The cleaned copies retain NANC's 26.8% versus about 29% contradiction. |
-| D23 | `06-data-sources-cap-clean.md` | The cleaned copy retains the Tussell row's paid/free conflict. |
-| D24 | `index-cap-clean.md` | The cleaned copy still says the numbered documents end at 15. |
-| D25 | `index-cap-clean.md` | The cleaned copy retains the broken relative link. |
-| D26 | `10-decision-tree-cap-clean.md` | The cleaned copy retains the two-cell row under a five-column header. |
+Support two OpenCode review shapes:
 
-D21–D26 use copies of the real pages, not simplified fixtures; each copy fixes only the five findings from its original capped response so the previously unreported defects have a fair chance to appear.
+- `opencode` is the high-recall mode. The model receives read-only `read`, `grep`
+  and `glob` tools and decides how to investigate. Prompted call limits reduce
+  excess, but OpenCode does not enforce per-tool quotas.
+- `controlled` is the bounded mode. It makes exactly three tool-free structured
+  model calls: choose search patterns, select evidence pages, and review the
+  assembled evidence. Go enforces search, snippet and evidence limits and runs
+  filesystem and image work concurrently.
 
-The earlier version of D15 also called “33 diagrams” stale; that was wrong because the directory contains 33 diagrams rendered once as PNG and once as SVG.
+Use an `opencode-go/...` model for the hosted path. OpenCode Go is the subscription
+provider; `opencode/...` is the separate pay-as-you-go Zen provider. Do not route
+production structured reviews through OpenRouter or the LiteLLM compatibility
+proxy until an end-to-end compliance test proves the exact backend works.
 
-## Candidates excluded from grading
+Keep Ollama as the recommended integration-test backend because it cannot spend
+API credit. A local model is not automatically suitable for production: it must
+first demonstrate structured-output compliance and adequate context capacity.
 
-These passages deserve review, but the corpus alone does not prove that either statement is false.
+## Getting it working
 
-| # | Candidate | Why it is not a confirmed defect |
-|---|---|---|
-| D7 | Pelosi's return is 744.8% at line 31 and about 838% at line 79 of `02-backtest-pelosi-copy.md`. | The first figure is a named Quiver strategy from May 2014 to the present, while the second is a separate estimate for “the past decade.” |
-| D9 | The infrastructure pipeline is £530bn in `06-data-sources.md` and £718bn in `05-niche-opportunities-ranked.md`. | The £718bn passage calls itself the latest pipeline, so the figures may come from different editions; the dates or sources should be made explicit. |
-| D11 | `13-incumbent-deep-dives.md` says Dragonfly Eye was divested to Dow Jones, while other pages say FiscalNote acquired it in 2023. | An acquisition followed by a divestment is possible, so the missing date or source is the problem rather than a proven contradiction. |
+Start OpenCode with the OpenCode Go credential available to the server process:
 
-D10, a 24.9% versus 25.0% rounding difference, has been removed; rendering-only D16 and D17 are outside this content review.
+```bash
+export OPENCODE_GO_API_KEY="$(jq -r '.opencode.key' ~/.local/share/opencode/auth.json)"
+opencode serve --hostname 127.0.0.1 --port 4097
+```
 
-## Coverage
+Run the full agent with a capable OpenCode Go model:
 
-✅ means the saved response contains the finding, ❌ means it had room but did not, ⚠️ means it reached the five-finding limit, ⛔ means the response was unusable, and — means the file was outside that run.
+```bash
+go run . \
+  -mode opencode \
+  -model opencode-go/kimi-k3 \
+  -opencode-url http://127.0.0.1:4097 \
+  -opencode-timeout 8m \
+  -opencode-verbose \
+  docs/page.md
+```
 
-| # | Defect | Batch | Dependency | opencode Gemini 2.5 | opencode Qwen3.5-35B-A3B |
-|---|---|---|---|---|---|
-| D1 | `raw_backtest_data.md` truncation | ✅ | ✅ | ✅ | — |
-| D2 | `raw_niche_edge.md` truncation | ✅ | ✅ | ✅ | — |
-| D3 | `raw_europe_clean.md` truncation | ✅ | ✅ | ✅ | — |
-| D4 | `raw_broader_clean.md` truncation | ✅ | ✅ | ✅ | — |
-| D5 | `raw_europe.md` pasted and truncated HTML | ✅ | — | ✅ | — |
-| D6 | KRUZ 14.5% versus about 18% | ✅ | ✅ | ⚠️ | — |
-| D8 | NANC 26.8% versus about 29% | ❌ | ✅ | ⚠️ | — |
-| D12 | Tussell row has conflicting columns | ❌ | ✅ | ⚠️ | — |
-| D13 | Open Access UK row is duplicated | ❌ | ✅ | ✅ | — |
-| D14 | PDMR is not expanded | ✅ | ✅ | ✅ | — |
-| D15 | Index says documents end at 15 | ❌ | ❌ | ⚠️ | — |
-| D18 | `raw_uk_deep_dive.md` truncation | — | — | ✅ | — |
-| D19 | Broken relative link in `index.md` | ❌ | ✅ | ⚠️ | — |
-| D20 | Malformed table row in `10-decision-tree-and-uk-landscape.md` | ❌ | ❌ | ⚠️ | — |
-| D21 | Clean-copy KRUZ contradiction | — | ✅ | ❌ | ⚠️ |
-| D22 | Clean-copy NANC contradiction | — | ❌ (✅ with only the two relevant files) | ❌ | ⚠️ |
-| D23 | Clean-copy Tussell conflict | — | ❌ | ⚠️ | ❌ |
-| D24 | Clean-copy stale document range | — | ✅ | ❌ | ❌ |
-| D25 | Clean-copy broken relative link | — | ❌ | ❌ | ❌ |
-| D26 | Clean-copy malformed table row | — | ❌ | ⚠️ | ⛔ |
+Use `-mode controlled` with the same flags for the bounded three-call path.
+Verbose mode records model gaps separately from tool execution. This matters:
+the measured searches and reads take milliseconds; nearly all elapsed time is
+model inference.
 
-The dependency results were previously transcribed incorrectly: `/tmp/dep-output.txt` explicitly reports both D13 and the D9 candidate, at lines 595 and 1265 respectively.
+The controlled path resolves images with `ResolveMarkdownImages` and uses the
+existing image transcription code. SVG source is sent to the vision model as
+text; PNG, JPEG and WebP are sent as image bytes. Transcriptions are cached by
+absolute path and SHA-256 content hash, so unchanged images are not recomputed.
+Remote HTTP(S) images remain deferred.
 
-For completeness, the fair opencode run reported D7, dependency reported D9, and none of the saved responses reported D11; these candidates do not count towards the required score.
+The OpenCode integration test is opt-in and refuses non-Ollama model IDs:
 
-The “283 findings” reported for dependency mode are repeated review items across dependency contexts, not 283 distinct defects.
+```bash
+OPENCODE_OLLAMA_INTEGRATION=1 \
+OPENCODE_OLLAMA_MODEL=ollama/gpt-oss:20b \
+OPENCODE_URL=http://127.0.0.1:4097 \
+go test ./internal/opencodereview -run TestOllamaIntegration -v
+```
 
-## Agent-run stability
+## Measured control runs
 
-These runs targeted only `10-decision-tree-cap-clean.md`; OpenCode chose which other files to inspect. 🟢 is a supported contradiction, 🟡 is plausible but weak or needs validation, and 🔴 is wrong or unusable.
+All review runs used `10-decision-tree-cap-clean.md` and the same generated
+`MdResponse` schema. The known recall probe was the page's `NANC ~29% in 2024`
+claim versus `26.8%` in the backtest page.
 
-| Gemini 2.5 Flash — run 1 | Gemini 2.5 Flash — run 2 | Qwen3.5-35B-A3B — run 1 | Qwen3.5-35B-A3B — run 2 |
-|---|---|---|---|
-| 🟡 D6 is presented as the landing point but later research says it is an end-state, not the initial build. | 🟢 NANC's 2024 return is about 29% here and 26.8% in the backtest. | 🔴 Returned no defects despite reading the target and the backtest containing the NANC figure. | 🔴 Failed to return structured output. |
-| 🔴 A newer competitor-research date does not by itself make the target stale. | 🟢 Beauhurst revenue is called undisclosed despite exact turnover appearing in its profile. | — | — |
-| — | 🟡 Calling Smart Insider a UK director-dealings pure-play is questionable because it also sells US politicians data. | — | — |
-| — | 🟢 D6 is presented as the current recommendation elsewhere but as an eventual shape rather than the MVP. | — | — |
-| — | 🟢 Hedge funds are called plausible D6 buyers here but rejected as cross-vertical buyers in the MVP analysis. | — | — |
+| Harness and model | Time | Structured output | NANC probe | Result |
+|---|---:|---|---|---|
+| Full `opencode`, `opencode-go/kimi-k3` | 4m25s | Valid | Found | Five supported findings. |
+| `controlled`, `opencode-go/kimi-k3` | 3m59s | Valid | Found | Five supported findings; included a one-off 56.7s transcription of 21 images, now cached. |
+| `controlled`, `opencode-go/deepseek-v4-flash` | 3m18s | Valid | Missed | Three supported findings; bounded orchestration reduced tool churn but lost recall on this run. |
+| `controlled`, `ollama/qwen3:30b-a3b` | 3m23s to phase-one failure | Invalid | Not reached | Model did not produce the search-pattern schema. |
+| `controlled`, `ollama/gpt-oss:20b` | 2m25s to phase-one failure | Invalid | Not reached | Same structured-output failure. |
 
-Gemini found D22 in one of these two structured runs. Qwen's first trace shows that reading the correct evidence does not guarantee that the model will report it.
+Kimi's full run searched for NANC but did not read the dedicated backtest file;
+the bounded grep snippets still contained enough evidence for the final finding.
+This demonstrates why a correct search does not always lead to the same selected
+evidence, and why repeated evaluation is needed before treating one run as a
+general model score.
 
-### Additional model runs
+An attempted `opencode/gemini-3.6-flash` run did not reach the model because the
+Zen workspace had insufficient pay-as-you-go balance. It is not counted as a
+quality or compliance result. The distinction is intentional: `opencode/...`
+and `opencode-go/...` are different billing providers despite both appearing in
+OpenCode's model list.
 
-The same target and prompt were run twice per model. Content quality and structured-output compliance are recorded separately.
+## Consequences
 
-| Model | Run 1 | Run 2 | D22 | Output compliance |
-|---|---|---|---|---|
-| Qwen3.5-27B dense | 🟡 Read the relevant backtest, but wrapped the result incorrectly and the claims could not be recovered before raw-output logging was added. | 🟢 Found NANC 29% versus 26.8%; 🟢 found the later Dragonfly divestment; 🟡 made a weak Beauhurst staleness claim. | 1/2 confirmed | 🔴 Both runs encoded the `items` array as a string rather than an array. |
-| Qwen3-Coder-Next 80B-A3B | 🔴 Read several strategic pages but returned no structured result. | 🔴 Read the backtest containing D22 but returned no structured result. | 0/2 observable | 🔴 No structured output in either run. |
-| Llama 3.3 70B Instruct | 🔴 Returned vague claims without evidence after reading only the target. | 🔴 Invented `5-overview.md` and unsupported market-share and 2020 claims. | 0/2 | 🟢 Schema-valid but substantively unusable. |
-| Qwen3.5-27B dense, direct OpenRouter | 🟢 Found NANC 29% versus 26.8% and the mnAi founding-date discrepancy; 🔴 treated missing corroboration as proof that three other claims were wrong. | — | 1/1 confirmed | 🔴 A wire capture proved OpenCode sent the array schema correctly, but OpenRouter's AtlasCloud backend returned `items` as a string and OpenCode accepted it. |
-
-Dense Qwen's second run is the clearest positive result: it found D22, but exposed a schema-adherence problem in this OpenCode/provider combination. The 70B result shows that parameter count alone does not compensate for poor tool selection or evidence discipline.
-
-## Findings
-
-- Among the graded fixtures in its scope, batch found every confirmed single-page prose defect except the two table faults, stale document range, broken link and malformed table row.
-- Dependency had the best coverage here, but its output included many repeated acronym and unverifiable-link findings.
-- The fair per-file opencode run reported every truncation group, D13 and D14.
-- Its apparent misses on D6, D8, D12, D15, D19 and D20 are inconclusive because their target responses reached the five-finding limit.
-- Cleaned copies removed the original five reported findings: KRUZ, NANC, the stale range and the broken link were still absent from responses with spare capacity, so those are genuine misses in this run.
-- The Tussell and malformed-row copies continued to fill all five slots with new acronym and jargon findings after two cleanup rounds, so those results remain inconclusive.
-- The targeted content-only dependency run caught the clean-copy KRUZ contradiction and stale document range, but missed the other four clean-copy defects.
-- A focused dependency rerun containing only the two D22 pages selected each as the other's dependency and reported the 26.8% versus about 29% contradiction.
-- Qwen filled the Pelosi response with unrelated findings, returned no findings for the data-source and index copies, and failed to produce the requested JSON for the decision-tree copy.
-- Gemma 4 26B A4B was also tried: it missed the required defects on three files and incorrectly asked for another chunk of the complete index file.
-- The single all-corpus opencode call ran out of output space after its first review, so one bounded call per file is the viable shape.
-- A checkmark records one saved response, not a model's general ability to find that defect.
-
-## Follow-ups
-
-- Align all three modes on Gemini 2.5 Flash before comparing their harnesses directly.
-- Decide whether broad acronym reporting belongs in the default review because it displaced more serious findings.
-- Repeat the chosen configuration to measure result stability.
-
-## Performance note
-
-Dependency mode is slower because it makes several calls per document; the targeted content-only run skipped images and reviewed only four pages, but its 32 corpus summaries still ran sequentially.
+- Prefer full `opencode` with a capable OpenCode Go model when recall matters
+  more than latency.
+- Prefer `controlled` when deterministic model-call and filesystem bounds matter.
+- Treat image transcription as a cached preprocessing cost, not agent tool work.
+- Do not claim that local inference is production-ready from cost alone; the two
+  configured local models failed before phase one completed successfully.
+- Keep a known-defect probe such as the NANC discrepancy in repeat evaluations,
+  and record both content quality and schema compliance.
