@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/joels-claude-bot/llm-site-reviewer/internal/controlledreview"
@@ -23,155 +22,185 @@ import (
 func main() {
 	logging.InitFromEnv()
 
-	mode := flag.String("mode", "batch", "review mode: batch, dependency, opencode, controlled, or visual")
-	recursive := flag.Bool("recursive", false, "batch mode: descend into nested subdirectories (default: only immediate files of each target directory)")
-	model := flag.String("model", "litellm/gemini-flash", "opencode mode: provider/model to use")
-	opencodeURL := flag.String("opencode-url", "http://127.0.0.1:4096", "opencode mode: server URL")
-	opencodeVerbose := flag.Bool("opencode-verbose", false, "opencode mode: log file-discovery and read tool calls")
-	opencodeTimeout := flag.Duration("opencode-timeout", 15*time.Minute, "opencode mode: overall session creation and prompt timeout")
-	opencodeEvidence := flag.String("opencode-evidence", "", "opencode mode: comma-separated workspace-relative evidence files; disables search and permits only reads")
-	controlledPatterns := flag.Int("controlled-max-patterns", 5, "controlled mode: maximum model-selected search patterns")
-	controlledMatches := flag.Int("controlled-max-matches", 20, "controlled mode: maximum snippets per search pattern")
-	controlledEvidence := flag.Int("controlled-max-evidence", 5, "controlled mode: maximum evidence pages")
-	controlledImageWorkers := flag.Int("controlled-image-workers", 4, "controlled mode: concurrent local image transcriptions")
-	controlledImageCache := flag.String("controlled-image-cache", "", "controlled mode: image transcription cache path (default: <repo>/.llm-site-reviewer/image-transcriptions.json)")
-	controlledDocsRoot := flag.String("controlled-docs-root", "", "controlled mode: docs root for leading-slash image references (default: repository root)")
-	controlledVisionModel := flag.String("controlled-vision-model", "qwen3-vl", "controlled mode: LiteLLM vision model for changed raster images")
-	dependencyTargets := flag.String("dependency-targets", "", "dependency mode: comma-separated page paths to resolve and review (all pages are still summarised)")
-	dependencySkipImages := flag.Bool("dependency-skip-images", false, "dependency mode: skip image transcription for a content-only run")
-	dependencyRecursive := flag.Bool("dependency-recursive", true, "dependency mode: descend into nested corpus directories")
-
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: inspect [FLAGS] target [target...]\n")
-		fmt.Fprintf(os.Stderr, "Flags:\n")
-		flag.PrintDefaults()
-
-	}
-	flag.Parse()
-
-	positional := flag.Args()
-
-	if len(positional) == 0 {
-		flag.Usage()
+	if len(os.Args) < 2 {
+		usage()
 		os.Exit(1)
 	}
 
 	var err error
-	switch *mode {
+	switch mode := os.Args[1]; mode {
 	case "batch":
-		err = review.LiteLLMRequest(positional, *recursive)
+		err = runBatch(os.Args[2:])
 	case "dependency":
-		var targets []string
-		if *dependencyTargets != "" {
-			for _, target := range strings.Split(*dependencyTargets, ",") {
-				absolute, absErr := filepath.Abs(strings.TrimSpace(target))
-				if absErr != nil {
-					err = absErr
-					break
-				}
-				targets = append(targets, absolute)
-			}
-		}
-		if err == nil {
-			err = runDependency(positional, targets, *dependencySkipImages, *dependencyRecursive)
-		}
+		err = runDependency(os.Args[2:])
 	case "opencode":
-		if len(positional) != 1 {
-			err = fmt.Errorf("opencode mode requires exactly one target file")
-			break
-		}
-		if *opencodeTimeout <= 0 {
-			err = fmt.Errorf("opencode-timeout must be positive")
-			break
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), *opencodeTimeout)
-		defer cancel()
-		var evidence []string
-		for _, path := range strings.Split(*opencodeEvidence, ",") {
-			if path = strings.TrimSpace(path); path != "" {
-				evidence = append(evidence, path)
-			}
-		}
-		err = opencodereview.Run(ctx, opencodereview.Config{
-			Target: positional[0], Model: *model, BaseURL: *opencodeURL,
-			Evidence: evidence, Verbose: *opencodeVerbose, Output: os.Stdout, TraceOutput: os.Stderr,
-		})
+		err = runOpencode(os.Args[2:])
 	case "controlled":
-		if len(positional) != 1 {
-			err = fmt.Errorf("controlled mode requires exactly one target file")
-			break
-		}
-		if *opencodeTimeout <= 0 {
-			err = fmt.Errorf("opencode-timeout must be positive")
-			break
-		}
-		err = runControlled(positional[0], *model, *opencodeURL, *opencodeTimeout, *opencodeVerbose, controlledreview.Config{
-			MaxPatterns: *controlledPatterns, MaxMatchesPerPattern: *controlledMatches,
-			MaxEvidenceFiles: *controlledEvidence, ImageWorkers: *controlledImageWorkers,
-			ImageCachePath: *controlledImageCache, DocsRoot: *controlledDocsRoot,
-		}, *controlledVisionModel)
+		err = runControlled(os.Args[2:])
 	case "visual":
-		err = runVisual(positional)
+		err = runVisual(os.Args[2:])
 	default:
-		fmt.Fprintf(os.Stderr, "unknown mode %q (want batch, dependency, opencode, controlled, or visual)\n\n", *mode)
-		flag.Usage()
+		fmt.Fprintf(os.Stderr, "unknown mode %q\n\n", mode)
+		usage()
 		os.Exit(1)
 	}
 
 	if err != nil {
-		log.Fatalf("failed to call request: %v", err)
+		log.Fatal(err)
+	}
+}
+
+func usage() {
+	fmt.Fprint(os.Stderr, `Usage: llm-site-reviewer <mode> [flags] target...
+
+Modes:
+  batch       review markdown files under one or more directories
+  dependency  review pages with cross-page dependency context
+  opencode    review one page via an opencode server session
+  controlled  review one page; Go runs the searches the model requests
+  visual      screenshot rendered pages and review the images
+
+Run "llm-site-reviewer <mode> -h" for that mode's flags.
+`)
+}
+
+func runBatch(args []string) error {
+	flags := flag.NewFlagSet("batch", flag.ExitOnError)
+	recursive := flags.Bool("recursive", false, "descend into nested subdirectories (default: only immediate files of each target directory)")
+	flags.Parse(args)
+	if flags.NArg() == 0 {
+		return fmt.Errorf("batch mode requires at least one target directory")
+	}
+	return review.LiteLLMRequest(flags.Args(), *recursive)
+}
+
+// runDependency reviews the pages under one or more root directories,
+// resolving cross-page dependencies across the combined set.
+func runDependency(args []string) error {
+	flags := flag.NewFlagSet("dependency", flag.ExitOnError)
+	targetList := flags.String("targets", "", "comma-separated page paths to resolve and review (all pages are still summarised)")
+	skipImages := flags.Bool("skip-images", false, "skip image transcription for a content-only run")
+	recursive := flags.Bool("recursive", true, "descend into nested corpus directories")
+	flags.Parse(args)
+	if flags.NArg() == 0 {
+		return fmt.Errorf("dependency mode requires at least one corpus directory")
 	}
 
-}
-
-type lazyImageTranscriber struct {
-	model  string
-	once   sync.Once
-	client review.ChatClient
-	err    error
-}
-
-func (t *lazyImageTranscriber) TranscribeImage(ctx context.Context, path string, content []byte) (string, error) {
-	t.once.Do(func() {
-		t.client, t.err = review.NewLLMClient(review.ClientConfigFromEnv(review.ProviderLiteLLMProxy))
-	})
-	if t.err != nil {
-		return "", t.err
+	var targets []string
+	for target := range strings.SplitSeq(*targetList, ",") {
+		target = strings.TrimSpace(target)
+		if target == "" {
+			continue
+		}
+		absolute, err := filepath.Abs(target)
+		if err != nil {
+			return err
+		}
+		targets = append(targets, absolute)
 	}
-	return review.TranscribeImage(ctx, t.client, t.model, path, content)
-}
 
-func runControlled(target, model, baseURL string, timeout time.Duration, verbose bool, cfg controlledreview.Config, visionModel string) error {
-	targetAbs, err := filepath.Abs(target)
+	client, err := review.NewLLMClient(review.ClientConfigFromEnv(review.ProviderLiteLLMProxy))
+	if err != nil {
+		return fmt.Errorf("failed to build litellm proxy client: %w", err)
+	}
+	config := review.DefaultDependencyConfig()
+	config.TargetPaths = targets
+	config.SkipImages = *skipImages
+	config.Recursive = *recursive
+	results, err := review.DependencyReview(context.Background(), client, flags.Args(), config)
 	if err != nil {
 		return err
 	}
-	workspace := opencodereview.FindProjectRoot(filepath.Dir(targetAbs))
-	cfg.Root = workspace
-	if cfg.DocsRoot == "" {
-		cfg.DocsRoot = workspace
-		candidate := filepath.Join(workspace, "docs")
-		if rel, relErr := filepath.Rel(candidate, targetAbs); relErr == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			cfg.DocsRoot = candidate
+	return printJSON(results)
+}
+
+func runOpencode(args []string) error {
+	flags := flag.NewFlagSet("opencode", flag.ExitOnError)
+	model := flags.String("model", "litellm/gemini-flash", "provider/model to use")
+	baseURL := flags.String("url", "http://127.0.0.1:4096", "opencode server URL")
+	verbose := flags.Bool("verbose", false, "log file-discovery and read tool calls")
+	timeout := flags.Duration("timeout", 15*time.Minute, "overall session creation and prompt timeout")
+	evidenceList := flags.String("evidence", "", "comma-separated workspace-relative evidence files; disables search and permits only reads")
+	flags.Parse(args)
+	if flags.NArg() != 1 {
+		return fmt.Errorf("opencode mode requires exactly one target file")
+	}
+	if *timeout <= 0 {
+		return fmt.Errorf("timeout must be positive")
+	}
+
+	var evidence []string
+	for path := range strings.SplitSeq(*evidenceList, ",") {
+		if path = strings.TrimSpace(path); path != "" {
+			evidence = append(evidence, path)
 		}
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
+	defer cancel()
+	return opencodereview.Run(ctx, opencodereview.Config{
+		Target: flags.Arg(0), Model: *model, BaseURL: *baseURL,
+		Evidence: evidence, Verbose: *verbose, Output: os.Stdout, TraceOutput: os.Stderr,
+	})
+}
+
+func runControlled(args []string) error {
+	flags := flag.NewFlagSet("controlled", flag.ExitOnError)
+	root := flags.String("root", "", "workspace root the model may search (required)")
+	docsRoot := flags.String("docs-root", "", "docs root for leading-slash image references (default: -root)")
+	imageCache := flags.String("image-cache", "", "image transcription cache path (default: <root>/.llm-site-reviewer/image-transcriptions.json)")
+	model := flags.String("model", "litellm/gemini-flash", "provider/model to use")
+	baseURL := flags.String("url", "http://127.0.0.1:4096", "opencode server URL")
+	verbose := flags.Bool("verbose", false, "log phase requests and search tool calls")
+	timeout := flags.Duration("timeout", 15*time.Minute, "overall session creation and prompt timeout")
+	visionModel := flags.String("vision-model", "qwen3-vl", "LiteLLM vision model for changed raster images")
+	flags.Parse(args)
+	if flags.NArg() != 1 {
+		return fmt.Errorf("controlled mode requires exactly one target file")
+	}
+	if *root == "" {
+		return fmt.Errorf("controlled mode requires -root")
+	}
+	if *timeout <= 0 {
+		return fmt.Errorf("timeout must be positive")
+	}
+
+	rootAbs, err := filepath.Abs(*root)
+	if err != nil {
+		return err
+	}
+	targetAbs, err := filepath.Abs(flags.Arg(0))
+	if err != nil {
+		return err
+	}
+	cfg := controlledreview.Config{Root: rootAbs, DocsRoot: rootAbs}
+	if *docsRoot != "" {
+		if cfg.DocsRoot, err = filepath.Abs(*docsRoot); err != nil {
+			return err
+		}
+	}
+	cfg.ImageCachePath = *imageCache
 	if cfg.ImageCachePath == "" {
-		cfg.ImageCachePath = filepath.Join(workspace, ".llm-site-reviewer", "image-transcriptions.json")
+		cfg.ImageCachePath = filepath.Join(rootAbs, ".llm-site-reviewer", "image-transcriptions.json")
 	}
 	var traceOutput io.Writer
-	if verbose {
+	if *verbose {
 		traceOutput = os.Stderr
 		cfg.TraceOutput = traceOutput
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+
+	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
 	phaseModel, err := opencodereview.NewControlledPhaseModel(ctx, opencodereview.ControlledConfig{
-		BaseURL: baseURL, Model: model, Workspace: workspace, TraceOutput: traceOutput,
+		BaseURL: *baseURL, Model: *model, Workspace: rootAbs, TraceOutput: traceOutput,
 	})
 	if err != nil {
 		return err
 	}
-	engine, err := controlledreview.New(cfg, phaseModel, &lazyImageTranscriber{model: visionModel})
+	client, err := review.NewLLMClient(review.ClientConfigFromEnv(review.ProviderLiteLLMProxy))
+	if err != nil {
+		return fmt.Errorf("failed to build litellm proxy client: %w", err)
+	}
+	engine, err := controlledreview.New(cfg, phaseModel, transcriber{client: client, model: *visionModel})
 	if err != nil {
 		return err
 	}
@@ -179,55 +208,40 @@ func runControlled(target, model, baseURL string, timeout time.Duration, verbose
 	if err != nil {
 		return err
 	}
-	encoded, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Println(string(encoded))
-	return nil
+	return printJSON(result)
 }
 
-func runVisual(urls []string) error {
+func runVisual(args []string) error {
+	flags := flag.NewFlagSet("visual", flag.ExitOnError)
+	flags.Parse(args)
+	if flags.NArg() == 0 {
+		return fmt.Errorf("visual mode requires at least one URL")
+	}
 	client, err := review.NewLLMClient(review.ClientConfigFromEnv(review.ProviderLiteLLMProxy))
 	if err != nil {
 		return err
 	}
-	results, err := review.VisualReview(context.Background(), client, urls, "", visual.DefaultConfig())
+	results, err := review.VisualReview(context.Background(), client, flags.Args(), "", visual.DefaultConfig())
 	if err != nil {
 		return err
 	}
-	encoded, err := json.MarshalIndent(results, "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Println(string(encoded))
-	return nil
+	return printJSON(results)
 }
 
-// runDependency wires up the dependency review path. It takes one or more root
-// directories (DependencyReview summarises the pages under all of them and
-// resolves cross-page dependencies across the combined set) and prints the
-// results as a single JSON array, one object per reviewed page.
-func runDependency(paths, targets []string, skipImages, recursive bool) error {
-	client, err := review.NewLLMClient(review.ClientConfigFromEnv(review.ProviderLiteLLMProxy))
-	if err != nil {
-		return fmt.Errorf("failed to build litellm proxy client: %w", err)
-	}
+// transcriber adapts the shared review client to controlledreview.ImageTranscriber.
+type transcriber struct {
+	client review.ChatClient
+	model  string
+}
 
-	config := review.DefaultDependencyConfig()
-	config.TargetPaths = targets
-	config.SkipImages = skipImages
-	config.Recursive = recursive
-	results, err := review.DependencyReview(context.Background(), client, paths, config)
+func (t transcriber) TranscribeImage(ctx context.Context, path string, content []byte) (string, error) {
+	return review.TranscribeImage(ctx, t.client, t.model, path, content)
+}
+
+func printJSON(value any) error {
+	encoded, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		return err
-	}
-
-	// Emit a single JSON result, mirroring batch mode: one object per reviewed
-	// page, each carrying the same MdItem shape (id, name, success, errors).
-	encoded, err := json.MarshalIndent(results, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal dependency results: %w", err)
 	}
 	fmt.Println(string(encoded))
 	return nil

@@ -13,13 +13,13 @@ go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6201.1 install chrom
 
 ## Usage
 ```bash
-GEMINI_API_KEY=<gemini_key_here> llm-site-reviewer <target-path>
+GEMINI_API_KEY=<gemini_key_here> llm-site-reviewer batch <target-path>
 ```
 
 Rendered-page review uses the existing LiteLLM proxy configuration:
 
 ```bash
-LITELLM_MASTER_KEY=<key> llm-site-reviewer -mode visual https://docs.example.com/
+LITELLM_MASTER_KEY=<key> llm-site-reviewer visual https://docs.example.com/
 ```
 
 Controlled review keeps filesystem work outside the model: the model chooses a
@@ -30,12 +30,12 @@ Changed images use the existing LiteLLM vision path, which sends SVG source as
 text and raster formats as image bytes.
 
 ```bash
-go run . \
-  -mode controlled \
+go run . controlled \
+  -root . \
   -model opencode-go/deepseek-v4-flash \
-  -opencode-url http://127.0.0.1:4097 \
-  -opencode-timeout 5m \
-  -opencode-verbose \
+  -url http://127.0.0.1:4097 \
+  -timeout 5m \
+  -verbose \
   docs/page.md
 ```
 

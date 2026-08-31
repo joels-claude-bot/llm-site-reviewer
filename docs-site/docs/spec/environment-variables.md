@@ -19,9 +19,9 @@ review mode: `batch` mode talks to Gemini directly, `dependency` mode talks to a
 
 ## When each is needed
 
-- **`batch` mode** (`--mode batch`, the default) calls `review.LiteLLMRequest`, which builds a
+- **`batch` mode** (`llm-site-reviewer batch`) calls `review.LiteLLMRequest`, which builds a
   Gemini client. It reads **`GEMINI_API_KEY`** and errors with `GEMINI_API_KEY not set` if it is empty.
-- **`dependency` mode** (`--mode dependency`) builds a LiteLLM proxy client. It reads
+- **`dependency` mode** (`llm-site-reviewer dependency`) builds a LiteLLM proxy client. It reads
   **`LITELLM_MASTER_KEY`** (errors with `LITELLM_MASTER_KEY not set` if empty) and
   **`LITELLM_BASE_URL`** for the proxy address, defaulting to `http://127.0.0.1:9177/v1`.
 - **`LOG_LEVEL`** is read once at startup by `logging.InitFromEnv` and sets the log level for

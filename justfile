@@ -28,11 +28,11 @@ example-site port="9700":
 
 # review the offsite example as one batch request
 example-batch:
-    go run . -mode batch {{ example_dir }}
+    go run . batch {{ example_dir }}
 
 # review the offsite example with dependency resolution
 example-dependency:
-    go run . -mode dependency {{ example_dir }}
+    go run . dependency {{ example_dir }}
 
 # deterministic Go test for visual segmentation
 visual-test:
@@ -44,4 +44,4 @@ visual-e2e:
 
 # review one or more rendered page URLs with the configured vision model
 visual-review *urls:
-    go run . -mode visual {{ urls }}
+    go run . visual {{ urls }}

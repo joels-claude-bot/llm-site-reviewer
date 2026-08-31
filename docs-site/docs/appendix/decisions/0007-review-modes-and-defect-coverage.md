@@ -44,6 +44,34 @@ Keep Ollama as the recommended integration-test backend because it cannot spend
 API credit. A local model is not automatically suitable for production: it must
 first demonstrate structured-output compliance and adequate context capacity.
 
+## Whole-site reviews
+
+Do not review an entire documentation site in one growing OpenCode session. That
+eventually recreates batch mode: context grows with every page, earlier content
+competes with later instructions, and failures become difficult to retry. A
+shared session also risks findings from one page leaking into another page's
+result.
+
+Instead, use a map-and-reduce shape:
+
+1. Discover and hash the corpus once. Resolve links, extract searchable text and
+   transcribe changed images into persistent caches.
+2. Build one shared immutable lexical index of pages, headings, named entities,
+   dates and quantities.
+3. Review each changed page in its own controlled session against a bounded set
+   of evidence from that index.
+4. Run several page reviews concurrently, subject to provider rate and spend
+   limits, and checkpoint each result so interrupted runs can resume.
+5. Make one final site-level synthesis call over the compact per-page findings,
+   not over all raw Markdown again.
+
+This retains cross-page comparison without creating a single enormous prompt.
+Keeping a session per page preserves the useful three-phase context within that
+review; keeping one session for all pages does not provide enough cache benefit
+to justify its context growth. With four concurrent workers, twenty cached-image
+reviews that each take roughly three minutes have a wall-clock floor closer to
+fifteen minutes than one hour, before rate limiting.
+
 ## Getting it working
 
 Start OpenCode with the OpenCode Go credential available to the server process:
@@ -56,16 +84,16 @@ opencode serve --hostname 127.0.0.1 --port 4097
 Run the full agent with a capable OpenCode Go model:
 
 ```bash
-go run . \
-  -mode opencode \
+go run . opencode \
   -model opencode-go/kimi-k3 \
-  -opencode-url http://127.0.0.1:4097 \
-  -opencode-timeout 8m \
-  -opencode-verbose \
+  -url http://127.0.0.1:4097 \
+  -timeout 8m \
+  -verbose \
   docs/page.md
 ```
 
-Use `-mode controlled` with the same flags for the bounded three-call path.
+Use the `controlled` mode with the same flags plus `-root <workspace>` for the
+bounded three-call path.
 Verbose mode records model gaps separately from tool execution. This matters:
 the measured searches and reads take milliseconds; nearly all elapsed time is
 model inference.
@@ -96,8 +124,8 @@ claim versus `26.8%` in the backtest page.
 | Full `opencode`, `opencode-go/kimi-k3` | 4m25s | Valid | Found | Five supported findings. |
 | `controlled`, `opencode-go/kimi-k3` | 3m59s | Valid | Found | Five supported findings; included a one-off 56.7s transcription of 21 images, now cached. |
 | `controlled`, `opencode-go/deepseek-v4-flash` | 3m18s | Valid | Missed | Three supported findings; bounded orchestration reduced tool churn but lost recall on this run. |
-| `controlled`, `ollama/qwen3:30b-a3b` | 3m23s to phase-one failure | Invalid | Not reached | Model did not produce the search-pattern schema. |
-| `controlled`, `ollama/gpt-oss:20b` | 2m25s to phase-one failure | Invalid | Not reached | Same structured-output failure. |
+| `controlled`, `ollama/qwen3:30b-a3b` | 3m23s to phase-one failure | Invalid | Not reached | Ran with an undersized 4K runtime context and did not produce the search-pattern schema. |
+| `controlled`, `ollama/gpt-oss:20b` | 2m16s to phase-one failure | Invalid | Not reached | The trace preserved a prose answer to text embedded in the target instead of the requested schema. |
 
 Kimi's full run searched for NANC but did not read the dedicated backtest file;
 the bounded grep snippets still contained enough evidence for the final finding.
@@ -111,13 +139,34 @@ quality or compliance result. The distinction is intentional: `opencode/...`
 and `opencode-go/...` are different billing providers despite both appearing in
 OpenCode's model list.
 
+### Local Ollama diagnosis
+
+The two Ollama failures are not evidence that the model architectures cannot
+produce structured JSON. The OpenCode provider advertised a 32K context limit,
+but `ollama ps` showed that `gpt-oss:20b` was actually loaded on `desktop-work`
+with only 4,096 tokens. The failed response reported exactly 4,096 input tokens.
+Once the target, phase instructions and schema exceeded that window, the model
+answered a research question embedded inside the target as ordinary Markdown.
+OpenCode then correctly returned `StructuredOutputError`.
+
+Ollama's OpenAI-compatible endpoint has no per-request context-size override.
+It requires either a larger server default or a model alias created with
+`PARAMETER num_ctx 32768`. Even with 4K context, `gpt-oss:20b` took about thirty
+seconds to answer a trivial greeting on `desktop-work`; moving to 32K would add
+KV-cache memory and prompt-ingestion cost. Treat that host as underpowered for
+20B/30B production reviews. It remains useful for small, no-cost transport and
+integration canaries.
+
 ## Consequences
 
 - Prefer full `opencode` with a capable OpenCode Go model when recall matters
   more than latency.
 - Prefer `controlled` when deterministic model-call and filesystem bounds matter.
 - Treat image transcription as a cached preprocessing cost, not agent tool work.
-- Do not claim that local inference is production-ready from cost alone; the two
-  configured local models failed before phase one completed successfully.
+- Do not claim that local inference is production-ready from cost alone. The
+  current `desktop-work` hardware/runtime is too slow and was configured with a
+  context window too small for this review prompt.
+- Scale whole-site runs with cached preprocessing, isolated per-page sessions,
+  bounded concurrency and resumable results—not one site-wide agent session.
 - Keep a known-defect probe such as the NANC discrepancy in repeat evaluations,
   and record both content quality and schema compliance.

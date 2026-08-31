@@ -72,7 +72,7 @@ func Run(ctx context.Context, cfg Config) error {
 	if !ok || providerID == "" || modelID == "" {
 		return fmt.Errorf("model must be provider/model, got %q", cfg.Model)
 	}
-	workspace := FindProjectRoot(filepath.Dir(target))
+	workspace := findProjectRoot(filepath.Dir(target))
 	for i, p := range cfg.Evidence {
 		absolute := p
 		if !filepath.IsAbs(absolute) {
@@ -289,9 +289,9 @@ func compact(v any) string {
 	return string(b)
 }
 
-// FindProjectRoot returns the closest ancestor containing .git, falling back
+// findProjectRoot returns the closest ancestor containing .git, falling back
 // to start when the target is not in a Git working tree.
-func FindProjectRoot(start string) string {
+func findProjectRoot(start string) string {
 	for cur := start; ; cur = filepath.Dir(cur) {
 		if _, e := os.Stat(filepath.Join(cur, ".git")); e == nil {
 			return cur
