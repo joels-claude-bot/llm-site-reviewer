@@ -1,0 +1,30 @@
+<!-- svg-source:excalidraw -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="390" viewBox="0 0 1240 390" role="img" aria-labelledby="title desc">
+  <title id="title">Controlled review pipeline</title>
+  <desc id="desc">A target page is read once. The model plans searches, Go runs them within a fixed budget, the model selects evidence, and Go assembles a final structured review.</desc>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/></marker></defs>
+  <rect width="1240" height="390" fill="#fff"/>
+  <g font-family="Virgil, Segoe UI, sans-serif" fill="#172033">
+    <text x="45" y="48" font-size="28" font-weight="700">Controlled review — model judgement inside hard boundaries</text>
+    <text x="45" y="86" font-size="16" fill="#64748b">three model calls; filesystem work stays in Go</text>
+    <g stroke-width="2">
+      <rect x="45" y="135" width="190" height="110" rx="14" fill="#a5d8ff" stroke="#2563eb"/>
+      <rect x="285" y="135" width="190" height="110" rx="14" fill="#d0bfff" stroke="#7c3aed"/>
+      <rect x="525" y="135" width="190" height="110" rx="14" fill="#c3fae8" stroke="#059669"/>
+      <rect x="765" y="135" width="190" height="110" rx="14" fill="#d0bfff" stroke="#7c3aed"/>
+      <rect x="1005" y="135" width="190" height="110" rx="14" fill="#b2f2bb" stroke="#15803d"/>
+    </g>
+    <g font-size="18" font-weight="700" text-anchor="middle">
+      <text x="140" y="176">Target + images</text><text x="140" y="205" font-size="15" font-weight="400">read once</text>
+      <text x="380" y="176">Plan searches</text><text x="380" y="205" font-size="15" font-weight="400">model call 1</text>
+      <text x="620" y="176">Search + read</text><text x="620" y="205" font-size="15" font-weight="400">Go enforces caps</text>
+      <text x="860" y="176">Select evidence</text><text x="860" y="205" font-size="15" font-weight="400">model call 2</text>
+      <text x="1100" y="176">Findings</text><text x="1100" y="205" font-size="15" font-weight="400">model call 3</text>
+    </g>
+    <g stroke="#475569" stroke-width="2.5" fill="none" marker-end="url(#arrow)">
+      <path d="M240 190 H278"/><path d="M480 190 H518"/><path d="M720 190 H758"/><path d="M960 190 H998"/>
+    </g>
+    <rect x="338" y="292" width="564" height="54" rx="12" fill="#ecfdf5" stroke="#059669" stroke-width="2"/>
+    <text x="620" y="325" font-size="17" text-anchor="middle">Search count, snippets, selected pages and reads are bounded by code</text>
+  </g>
+</svg>

@@ -1,0 +1,28 @@
+<!-- svg-source:excalidraw -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="430" viewBox="0 0 1240 430" role="img" aria-labelledby="title desc">
+  <title id="title">Full OpenCode agent review pipeline</title>
+  <desc id="desc">The model receives a target and repeatedly chooses read-only glob, grep, and read tools. It follows evidence until it returns structured findings or reaches the timeout.</desc>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#475569"/></marker></defs>
+  <rect width="1240" height="430" fill="#fff"/>
+  <g font-family="Virgil, Segoe UI, sans-serif" fill="#172033">
+    <text x="45" y="48" font-size="28" font-weight="700">Full OpenCode — the agent follows the evidence</text>
+    <text x="45" y="86" font-size="16" fill="#64748b">one session; adaptive read-only tool loop</text>
+    <rect x="55" y="145" width="210" height="110" rx="14" fill="#a5d8ff" stroke="#2563eb" stroke-width="2"/>
+    <rect x="385" y="125" width="300" height="150" rx="18" fill="#d0bfff" stroke="#7c3aed" stroke-width="2.5"/>
+    <rect x="805" y="145" width="180" height="110" rx="14" fill="#ffd8a8" stroke="#ea580c" stroke-width="2"/>
+    <rect x="1035" y="145" width="160" height="110" rx="14" fill="#b2f2bb" stroke="#15803d" stroke-width="2"/>
+    <g text-anchor="middle">
+      <text x="160" y="185" font-size="19" font-weight="700">Target page</text><text x="160" y="216" font-size="15">+ schema + guidance</text>
+      <text x="535" y="170" font-size="20" font-weight="700">Agent decides next step</text>
+      <text x="535" y="205" font-size="16">inspect result · follow lead · stop</text>
+      <text x="535" y="238" font-size="14" fill="#6d28d9">tool count is guidance, not enforcement</text>
+      <text x="895" y="181" font-size="18" font-weight="700">glob · grep · read</text><text x="895" y="215" font-size="15">repository evidence</text>
+      <text x="1115" y="185" font-size="18" font-weight="700">Findings</text><text x="1115" y="216" font-size="15">structured output</text>
+    </g>
+    <g stroke="#475569" stroke-width="2.5" fill="none" marker-end="url(#arrow)">
+      <path d="M270 200 H377"/><path d="M692 200 H797"/><path d="M992 200 H1027"/>
+      <path d="M895 267 C895 350 535 350 535 283"/>
+    </g>
+    <text x="714" y="367" font-size="16" fill="#64748b" text-anchor="middle">Each tool result returns to the same session, so the model can revise its investigation.</text>
+  </g>
+</svg>
