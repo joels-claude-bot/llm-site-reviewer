@@ -6,87 +6,71 @@ title: "ADR 0007: OpenCode review modes and structured output"
 
 Status: Accepted (2026-08-30)
 
-## Context
+:::info Decision in one minute
+Use **full OpenCode** when recall matters and **controlled OpenCode** when bounded work matters.
 
-The reviewer needs to compare one Markdown page with related repository content
-and return `MdResponse` as JSON Schema-constrained output. A single context dump
-has poor recall, while an unrestricted agent can spend minutes repeatedly using
-cheap filesystem tools.
+Prefer OpenCode's direct providers with API-level JSON Schema output. OpenRouter can run an agent very quickly, but in our tests it returned ordinary text instead of `structured_output`. A locally validated text-JSON fallback remains exploratory.
 
-Provider behaviour matters as much as model quality. Sending the same schema to
-an OpenAI-compatible endpoint does not guarantee that the provider enforces it.
-In particular, OpenRouter-backed Qwen runs returned arrays encoded as strings or
-no structured result even though the captured request contained the correct
-schema. Prompt wording did not repair that transport/provider mismatch.
+:::
 
-Later control runs established an important narrower conclusion: OpenRouter can
-run the OpenCode agent loop quickly and can return JSON-looking ordinary text.
-What failed was OpenCode's API-level structured-output contract, not tool use,
-JSON generation in general, the SDK transport, or OpenCode itself.
+## The shape of a review
 
-OpenCode's direct providers do support the `body.format` structured-output path.
-The Go implementation generates the schema from `review.MdResponse`; it does not
-maintain a second handwritten response schema.
+```mermaid
+flowchart LR
+    TUI[Interactive TUI]:::entry
+    CLI[opencode run]:::entry
+    SDK[SDK client]:::entry
+    SESSION[OpenCode session]:::boundary
+    LOOP[read · grep · glob loop]:::logic
+    PROVIDER[Model provider]:::external
+    STRICT[Schema-enforced result]:::logic
+    TEXT[Ordinary text containing JSON]:::fake
+
+    TUI --> SESSION
+    CLI --> SESSION
+    SDK --> SESSION
+    SESSION --> LOOP --> PROVIDER
+    PROVIDER -->|direct provider + json_schema| STRICT
+    PROVIDER -->|OpenRouter text mode| TEXT
+
+    classDef entry fill:#85c1e9,color:#1a252f,stroke:#2471a3
+    classDef logic fill:#52be80,color:#145a32,stroke:#196f3d
+    classDef boundary fill:#c39bd3,color:#4a235a,stroke:#7d3c98
+    classDef fake fill:#f0b27a,color:#784212,stroke:#e67e22
+    classDef external fill:#717d7e,color:#fff,stroke:#5d6d7e
+```
+
+:::tip What the experiments established
+The Software Development Kit (SDK) was not adding minutes of overhead. Session creation took **71ms**, and thirty filesystem tools took **732ms**. Almost all elapsed time was model inference between tool rounds.
+
+:::
 
 ## Decision
 
-Support two OpenCode review shapes:
+| Need | Use | Boundary |
+|---|---|---|
+| Highest adaptive recall | **Full `opencode`** | The prompt suggests limits; the agent may exceed them. |
+| Predictable work | **`controlled`** | Go enforces searches, snippets, evidence reads and exactly three model calls. |
+| No-spend integration canary | **Ollama** | The local model must still prove context capacity and schema compliance. |
+| Fast OpenRouter experiment | **Text JSON + local validation** | Not provider-enforced structured output; not yet the production default. |
 
-- `opencode` is the high-recall mode. The model receives read-only `read`, `grep`
-  and `glob` tools and decides how to investigate. Prompted call limits reduce
-  excess, but OpenCode does not enforce per-tool quotas.
-- `controlled` is the bounded mode. It makes exactly three tool-free structured
-  model calls: choose search patterns, select evidence pages, and review the
-  assembled evidence. Go enforces search, snippet and evidence limits and runs
-  filesystem and image work concurrently.
+Use an `opencode-go/...` model for the OpenCode Go subscription. The similar-looking `opencode/...` prefix is the separate Zen pay-as-you-go provider.
 
-Use an `opencode-go/...` model for the hosted path. OpenCode Go is the subscription
-provider; `opencode/...` is the separate pay-as-you-go Zen provider. Do not route
-production structured reviews through OpenRouter or the LiteLLM compatibility
-proxy until an end-to-end compliance test proves the exact backend works.
+:::warning Does not mean
 
-Keep Ollama as the recommended integration-test backend because it cannot spend
-API credit. A local model is not automatically suitable for production: it must
-first demonstrate structured-output compliance and adequate context capacity.
+- `opencode run --format json` does **not** constrain the model to a JSON response. It serialises OpenCode lifecycle events.
+- A model producing JSON-looking text does **not** prove support for OpenCode's `json_schema` output contract.
+- A fast run does **not** prove good findings. Output quality and transport compliance are separate checks.
 
-## Whole-site reviews
+:::
 
-Do not review an entire documentation site in one growing OpenCode session. That
-eventually recreates batch mode: context grows with every page, earlier content
-competes with later instructions, and failures become difficult to retry. A
-shared session also risks findings from one page leaking into another page's
-result.
+## How each path was invoked
 
-Instead, use a map-and-reduce shape:
+All controls reviewed `10-decision-tree-cap-clean.md`. The copy-paste prompt is on the [OpenCode playground page](/spec/opencode-prompt).
 
-1. Discover and hash the corpus once. Resolve links, extract searchable text and
-   transcribe changed images into persistent caches.
-2. Build one shared immutable lexical index of pages, headings, named entities,
-   dates and quantities.
-3. Review each changed page in its own controlled session against a bounded set
-   of evidence from that index.
-4. Run several page reviews concurrently, subject to provider rate and spend
-   limits, and checkpoint each result so interrupted runs can resume.
-5. Make one final site-level synthesis call over the compact per-page findings,
-   not over all raw Markdown again.
+### Production: API-level structured output
 
-This retains cross-page comparison without creating a single enormous prompt.
-Keeping a session per page preserves the useful three-phase context within that
-review; keeping one session for all pages does not provide enough cache benefit
-to justify its context growth. With four concurrent workers, twenty cached-image
-reviews that each take roughly three minutes have a wall-clock floor closer to
-fifteen minutes than one hour, before rate limiting.
-
-## Getting it working
-
-Start OpenCode with the OpenCode Go credential available to the server process:
-
-```bash
-export OPENCODE_GO_API_KEY="$(jq -r '.opencode.key' ~/.local/share/opencode/auth.json)"
-opencode serve --hostname 127.0.0.1 --port 4097
-```
-
-Run the full agent with a capable OpenCode Go model:
+The Go CLI creates an OpenCode session. Its request includes a JSON Schema generated from the Go `MdResponse` structs:
 
 ```bash
 go run . opencode \
@@ -97,84 +81,6 @@ go run . opencode \
   docs/page.md
 ```
 
-Use the `controlled` mode with the same flags plus `-root <workspace>` for the
-bounded three-call path.
-Verbose mode records model gaps separately from tool execution. This matters:
-the measured searches and reads take milliseconds; nearly all elapsed time is
-model inference.
-
-The controlled path resolves images with `ResolveMarkdownImages` and uses the
-existing image transcription code. SVG source is sent to the vision model as
-text; PNG, JPEG and WebP are sent as image bytes. Transcriptions are cached by
-absolute path and SHA-256 content hash, so unchanged images are not recomputed.
-Remote HTTP(S) images remain deferred.
-
-The OpenCode integration test is opt-in and refuses non-Ollama model IDs:
-
-```bash
-OPENCODE_OLLAMA_INTEGRATION=1 \
-OPENCODE_OLLAMA_MODEL=ollama/gpt-oss:20b \
-OPENCODE_URL=http://127.0.0.1:4097 \
-go test ./internal/opencodereview -run TestOllamaIntegration -v
-```
-
-## Invocation layers
-
-OpenCode exposes several interfaces that look similar at the terminal but make
-different output promises. The experiments used all three below.
-
-| Interface | What it sends | What `json` means | Suitable for automation? |
-|---|---|---|---|
-| Interactive TUI | An ordinary session message | Prompt wording only | Useful manual control. |
-| `opencode run --attach` | An ordinary session message through an existing server | `--format json` serialises lifecycle events; it does **not** constrain the model response | Yes, after extracting the final text event. |
-| SDK `session.prompt` without `body.format` | The same kind of ordinary session message | Prompt wording only | Yes, after extracting and validating JSON locally. |
-| SDK `session.prompt` with `body.format.type = "json_schema"` | A structured-output request | OpenCode returns `info.structured_output` or a structured error | Preferred when the provider complies. |
-
-`--attach` avoids starting another embedded OpenCode server. The CLI connects to
-the already-running server, creates a session there, sends the message, and
-streams events until the session stops:
-
-```text
-opencode run -> existing server on :4097 -> session -> provider/model
-SDK prompt   -> existing server on :4097 -> session -> provider/model
-```
-
-The representative CLI control used the full prompt from the
-[OpenCode playground page](/spec/opencode-prompt):
-
-```bash
-cd /path/to/repository
-
-opencode run \
-  --attach http://127.0.0.1:4097 \
-  --dir /path/to/repository \
-  --model openrouter/qwen/qwen3-coder-next \
-  --format json \
-  "$PROMPT"
-```
-
-The text-output SDK control made the equivalent request, deliberately omitting
-`format`:
-
-```ts
-await client.session.prompt({
-  sessionID,
-  directory,
-  model: {
-    providerID: "openrouter",
-    modelID: "qwen/qwen3-coder-next",
-  },
-  tools: {
-    read: true, grep: true, glob: true,
-    bash: false, edit: false, write: false,
-  },
-  parts: [{ type: "text", text: prompt }],
-})
-```
-
-The production `opencode` mode instead includes a generated schema and reads
-`info.structured_output`:
-
 ```ts
 format: {
   type: "json_schema",
@@ -183,112 +89,249 @@ format: {
 }
 ```
 
-These are output-protocol differences, not different search engines. The CLI
-and SDK both hand the investigation to an OpenCode session. Invoking the CLI
-from Go would add process management and event-stream parsing; it does not by
-itself make model inference faster.
+The result must arrive in `info.structured_output`; Go then unmarshals and validates it.
 
-## Measured control runs
+### Non-interactive OpenCode CLI
 
-All review runs used `10-decision-tree-cap-clean.md` and the same generated
-`MdResponse` schema. The known recall probe was the page's `NANC ~29% in 2024`
-claim versus `26.8%` in the backtest page.
+`--attach` reuses the server already listening on port 4097 instead of starting another embedded server:
 
-| Harness and model | Time | Structured output | NANC probe | Result |
+```bash
+opencode run \
+  --attach http://127.0.0.1:4097 \
+  --dir /path/to/repository \
+  --model openrouter/qwen/qwen3-coder-next \
+  --format json \
+  "$PROMPT"
+```
+
+This emits `tool_use`, `step_finish` and final `text` events. Automation must select and validate the final text event.
+
+### SDK text-output control
+
+This called the same server but deliberately omitted `format`:
+
+```ts
+await client.session.prompt({
+  sessionID,
+  directory,
+  model: { providerID: "openrouter", modelID: "qwen/qwen3-coder-next" },
+  tools: {
+    read: true, grep: true, glob: true,
+    bash: false, edit: false, write: false,
+  },
+  parts: [{ type: "text", text: prompt }],
+})
+```
+
+The throwaway control extracted a fenced JSON block—or the outermost object—and unmarshalled it locally. This is weaker than provider-enforced structured output, but stronger than trusting arbitrary prose.
+
+## Results at a glance
+
+### Structured review controls
+
+| Harness and model | Time | Schema | NANC probe | Outcome |
 |---|---:|---|---|---|
-| Full `opencode`, `opencode-go/kimi-k3` | 4m25s | Valid | Found | Five supported findings. |
-| `controlled`, `opencode-go/kimi-k3` | 3m59s | Valid | Found | Five supported findings; included a one-off 56.7s transcription of 21 images, now cached. |
-| `controlled`, `opencode-go/deepseek-v4-flash` | 3m18s | Valid | Missed | Three supported findings; bounded orchestration reduced tool churn but lost recall on this run. |
-| `controlled`, `ollama/qwen3:30b-a3b` | 3m23s to phase-one failure | Invalid | Not reached | Ran with an undersized 4K runtime context and did not produce the search-pattern schema. |
-| `controlled`, `ollama/gpt-oss:20b` | 2m16s to phase-one failure | Invalid | Not reached | The trace preserved a prose answer to text embedded in the target instead of the requested schema. |
+| Full OpenCode · Kimi K3 | 4m25s | Valid | Found | Five supported findings. |
+| Controlled · Kimi K3 | 3m59s | Valid | Found | Five supported findings; first run also transcribed 21 images. |
+| Controlled · DeepSeek V4 Flash | 3m18s | Valid | Missed | Three supported findings. |
+| Controlled · Ollama Qwen3 30B | 3m23s | Invalid | Not reached | Failed during search-pattern output. |
+| Controlled · Ollama GPT-OSS 20B | 2m16s | Invalid | Not reached | Answered target prose instead of the schema. |
 
-Kimi's full run searched for NANC but did not read the dedicated backtest file;
-the bounded grep snippets still contained enough evidence for the final finding.
-This demonstrates why a correct search does not always lead to the same selected
-evidence, and why repeated evaluation is needed before treating one run as a
-general model score.
+The recall probe was `NANC ~29% in 2024` versus `26.8%` in the dedicated backtest page.
 
-An attempted `opencode/gemini-3.6-flash` run did not reach the model because the
-Zen workspace had insufficient pay-as-you-go balance. It is not counted as a
-quality or compliance result. The distinction is intentional: `opencode/...`
-and `opencode-go/...` are different billing providers despite both appearing in
-OpenCode's model list.
+### Fast OpenRouter text controls
 
-### OpenRouter text-output controls
+| Invocation | Time | Agent work | Final context | Returned |
+|---|---:|---|---:|---|
+| Interactive terminal user interface (TUI) | 22.1s | Not captured | About 52K | JSON-looking text. |
+| `opencode run --attach` | 32.2s | 23 tools · 6 turns | 56,852 | Directly parseable JSON text. |
+| TypeScript SDK without `format` | 42.18s | 30 tools · 7 turns | 109,936 | Prose plus fenced JSON. |
 
-These controls used Qwen3 Coder Next through OpenRouter and asked for JSON as
-ordinary assistant text. They intentionally omitted `body.format`, so they test
-agent-loop performance rather than provider-enforced structured output.
+:::tip Why did the SDK run have twice the context?
+It chose **23 reads**, compared with **11 reads** in the CLI run. Every tool result joins the continuing conversation. The SDK did not duplicate the prompt; the agent followed a larger search path.
 
-| Invocation | Wall time | Tool calls | Model turns | Last-turn context | Outcome |
-|---|---:|---:|---:|---:|---|
-| Interactive OpenCode TUI | 22.1s | Not captured | Not captured | About 52K | Returned JSON-looking text; manual baseline. |
-| `opencode run --attach`, JSON event stream | 32.2s | 23: 11 reads, 11 greps, 1 glob | 6 | 56,852 | Final text event was directly parseable JSON. |
-| TypeScript SDK, no `format` | 42.18s | 30: 23 reads, 6 greps, 1 glob | 7 | 109,936 | Returned a prose preamble plus fenced valid JSON; local fenced-block extraction was required. |
+These figures describe each final model turn—not cumulative token use.
 
-The SDK session was created in 71ms. Its thirty filesystem tool calls consumed
-732ms in total. The remaining time was spent in the seven provider/model turns.
-The CLI trace showed the same pattern: reads and searches took milliseconds;
-model turns dominated wall time.
+:::
 
-The SDK run's larger context is not evidence that the SDK duplicates content.
-The autonomous agent chose twelve more reads than the CLI run, and every tool
-result became part of the continuing session. The reported 109,936 and 56,852
-figures are the context for each run's final model turn, not cumulative token
-sums across all turns. The difference is explained by the different stochastic
-search paths and volume of evidence read.
+:::warning The prompt did not enforce the tool budget
+The prompt asked for at most five greps and five evidence reads. The CLI used 23 tools; the SDK used 30. Full agent limits are guidance. Controlled mode is required when limits must be real.
 
-Both automated runs also exceeded the prompt's requested tool budget. Prompted
-limits are advisory in full agent mode. The 32-second CLI run used 23 tools and
-the 42-second SDK run used 30; speed did not come from following the requested
-five-grep/five-read cap.
+:::
 
-The result explains the earlier multi-minute traces. Those runs used different
-models and provider routes, where gaps of tens of seconds occurred between tool
-events. Qwen3 Coder Next on OpenRouter processed repeated cached tool turns much
-faster. The SDK transport was not adding minutes of overhead. Conversely, the
-same OpenRouter route still did not populate `structured_output` when
-`json_schema` was requested, so this speed result does not reverse the structured
-compliance finding.
+## What the fast runs returned
 
-Ordinary-text JSON is viable as an explicitly weaker fallback: extract a fenced
-JSON block or the outermost object, unmarshal it into `MdResponse`, apply the same
-identity/category/cardinality validation, and optionally retry once. It must not
-be described as provider-enforced structured output. Result quality must also be
-evaluated separately: several fast Qwen findings used weak `UNVERIFIABLE`
-reasoning or treated supporting evidence as a contradiction.
+These are model claims, not accepted repository corrections. Full results are expandable so timing and quality can be audited without making the page a wall of JSON.
 
-### Local Ollama diagnosis
+| Run | Headline output | Quality concern |
+|---|---|---|
+| Interactive TUI | Smart Insider, FiscalNote, Stotles and Tussell | Duplicated Smart Insider and called supporting FiscalNote evidence contradictory. |
+| CLI attach | Helio, Smart Insider, disclosure scope, PDMR and terminology | Missed NANC; some evidence mixes politicians with corporate insiders. |
+| SDK text | Smart Insider, FiscalNote, market size, revenue path and D6 | Added prose despite “JSON only”; several comparisons are weakly scoped. |
 
-The two Ollama failures are not evidence that the model architectures cannot
-produce structured JSON. The OpenCode provider advertised a 32K context limit,
-but `ollama ps` showed that `gpt-oss:20b` was actually loaded on `desktop-work`
-with only 4,096 tokens. The failed response reported exactly 4,096 input tokens.
-Once the target, phase instructions and schema exceeded that window, the model
-answered a research question embedded inside the target as ordinary Markdown.
-OpenCode then correctly returned `StructuredOutputError`.
+:::details Interactive TUI — condensed returned result
 
-Ollama's OpenAI-compatible endpoint has no per-request context-size override.
-It requires either a larger server default or a model alias created with
-`PARAMETER num_ctx 32768`. Even with 4K context, `gpt-oss:20b` took about thirty
-seconds to answer a trivial greeting on `desktop-work`; moving to 32K would add
-KV-cache memory and prompt-ingestion cost. Treat that host as underpowered for
-20B/30B production reviews. It remains useful for small, no-cost transport and
-integration canaries.
+```json
+{
+  "results": [{
+    "id": 0,
+    "name": "10-decision-tree-cap-clean.md",
+    "success": false,
+    "errors": [
+      {
+        "category": "CONTRADICTS_PAGE",
+        "notes": "Smart Insider's ~$872k 2026 estimate appears only in the target; other pages say only sub-£1M."
+      },
+      {
+        "category": "UNVERIFIABLE",
+        "notes": "The same Smart Insider estimate has no repository citation."
+      },
+      {
+        "category": "CONTRADICTS_PAGE",
+        "notes": "FiscalNote did not buy Dods, but the cited evidence also treats them as separate—so it actually supports the target."
+      },
+      {
+        "category": "UNVERIFIABLE",
+        "notes": "The $13M Stotles Series A breakdown is not supported by the comparison page's $21.6M total."
+      },
+      {
+        "category": "UNVERIFIABLE",
+        "notes": "The exact $1.36M single-angel Tussell claim is not supported by pages describing it as bootstrapped or approximately $1.4M."
+      }
+    ]
+  }]
+}
+```
+
+:::
+
+:::details `opencode run --attach` — condensed returned result
+
+```json
+{
+  "results": [{
+    "id": 0,
+    "name": "10-decision-tree-cap-clean.md",
+    "success": false,
+    "errors": [
+      {
+        "category": "STALE_REF",
+        "notes": "The DeHavilland/Helio and NewsDirect timeline differs from docs 12 and 13."
+      },
+      {
+        "category": "UNVERIFIABLE",
+        "notes": "Other pages support only sub-£1M, not Smart Insider's exact ~$872k estimate."
+      },
+      {
+        "category": "WRONG_CLAIM",
+        "notes": "The no-international-analogue claim conflicts with European and UK PDMR disclosure pages, although politician and corporate-insider scope may be mixed."
+      },
+      {
+        "category": "ACRONYM_UNEXPANDED",
+        "notes": "PDMR is not expanded in the decision-tree context."
+      },
+      {
+        "category": "INCONSISTENT_TERM",
+        "notes": "The page risks conflating PDMR-regulated people with the RNS reporting mechanism."
+      }
+    ]
+  }]
+}
+```
+
+:::
+
+:::details TypeScript SDK without `format` — condensed returned result
+
+The assistant added a prose introduction despite the “JSON only” instruction, then returned:
+
+```json
+{
+  "results": [{
+    "id": 0,
+    "name": "10-decision-tree-cap-clean.md",
+    "success": false,
+    "errors": [
+      {
+        "category": "UNVERIFIABLE",
+        "notes": "Smart Insider's exact ~$872k estimate is weaker than the repository's broader sub-£1M description."
+      },
+      {
+        "category": "STALE_REF",
+        "notes": "The cited Vuelio and Dragonfly Eye evidence does not establish that 'FiscalNote did not buy Dods' is stale."
+      },
+      {
+        "category": "CONTRADICTS_PAGE",
+        "notes": "Stockopedia and SharePad include director-dealing features, though this may not contradict the narrower pure-play market claim."
+      },
+      {
+        "category": "UNVERIFIABLE",
+        "notes": "The £5–15M annual recurring revenue path and £30M+ European option lack support from pages describing weak D6 demand."
+      },
+      {
+        "category": "INCONSISTENT_TERM",
+        "notes": "D6 is used for both an eventual graph and something resembling a minimum viable product."
+      }
+    ]
+  }]
+}
+```
+
+:::
+
+## Provider findings
+
+### OpenRouter
+
+OpenRouter Qwen was fast at the ordinary tool loop. The same route did not populate `structured_output` when OpenCode requested `json_schema`. This is an output-protocol failure, not an inability to generate JSON text. LiteLLM remains excluded because it also failed to preserve the structured-output contract.
+
+### OpenCode Go, Zen and Ollama
+
+OpenCode's direct providers produced valid structured output in successful Kimi and DeepSeek runs. An `opencode/gemini-3.6-flash` attempt failed before inference because the Zen workspace lacked pay-as-you-go credit.
+
+:::details Why the local Ollama runs failed
+
+OpenCode advertised 32K context, but `ollama ps` showed GPT-OSS 20B loaded on `desktop-work` with only 4,096 tokens. The response reported exactly 4,096 input tokens. Once the target, instructions and schema filled the window, the model answered content embedded in the target.
+
+Ollama needs a larger server default or an alias with `PARAMETER num_ctx 32768`. Even at 4K, GPT-OSS 20B took about thirty seconds to answer a greeting, so this host is underpowered for production 20B/30B reviews. It remains useful for no-cost integration canaries.
+
+:::
+
+```bash
+OPENCODE_OLLAMA_INTEGRATION=1 \
+OPENCODE_OLLAMA_MODEL=ollama/gpt-oss:20b \
+OPENCODE_URL=http://127.0.0.1:4097 \
+go test ./internal/opencodereview -run TestOllamaIntegration -v
+```
+
+## Images and whole-site reviews
+
+Images are shared preprocessing: SVG source becomes text; PNG, JPEG and WebP use the vision model. Transcriptions are cached by absolute path and SHA-256 content hash. Remote HTTP(S) images remain deferred.
+
+```mermaid
+flowchart LR
+    DISCOVER[Discover + hash once]:::entry
+    CACHE[Text and image cache]:::logic
+    INDEX[Shared evidence index]:::boundary
+    PAGE[Isolated page reviews]:::logic
+    SYNTH[Compact site synthesis]:::external
+
+    DISCOVER --> CACHE --> INDEX --> PAGE --> SYNTH
+
+    classDef entry fill:#85c1e9,color:#1a252f,stroke:#2471a3
+    classDef logic fill:#52be80,color:#145a32,stroke:#196f3d
+    classDef boundary fill:#c39bd3,color:#4a235a,stroke:#7d3c98
+    classDef external fill:#717d7e,color:#fff,stroke:#5d6d7e
+```
+
+Review each changed page in an isolated, resumable session against bounded evidence. Make one final synthesis call over compact findings—not all raw Markdown.
 
 ## Consequences
 
-- Prefer full `opencode` with a capable OpenCode Go model when recall matters
-  more than latency.
-- Prefer `controlled` when deterministic model-call and filesystem bounds matter.
-- Treat image transcription as a cached preprocessing cost, not agent tool work.
-- Do not claim that local inference is production-ready from cost alone. The
-  current `desktop-work` hardware/runtime is too slow and was configured with a
-  context window too small for this review prompt.
-- Scale whole-site runs with cached preprocessing, isolated per-page sessions,
-  bounded concurrency and resumable results—not one site-wide agent session.
-- Keep a known-defect probe such as the NANC discrepancy in repeat evaluations,
-  and record both content quality and schema compliance.
-- Treat CLI, SDK text output and SDK structured output as separate invocation
-  controls. Record tools, model turns, final context and parse behaviour so a
-  fast run is not incorrectly attributed to the transport layer.
+- ✓ Direct OpenCode providers remain the trusted structured-output path.
+- ✓ Full and controlled modes cover adaptive recall and enforceable bounds.
+- ✓ OpenRouter text JSON is a measured fallback candidate, not an unexplained failure.
+- ✓ Logs must record tools, model turns, final context, parse behaviour and recall probes.
+- ✗ Prompted limits are not guarantees in full agent mode.
+- ✗ Local parsing cannot make text equivalent to provider-enforced JSON Schema.
+- ✗ `desktop-work` is not currently a production host for these 20B/30B reviews.
