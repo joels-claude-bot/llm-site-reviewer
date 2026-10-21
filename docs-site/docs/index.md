@@ -2,9 +2,8 @@
 pageType: home
 
 hero:
-  name: llm-site-reviewer
-  text: Catch the doc bugs the build misses
-  tagline: "Your site compiled. Now check the page a reader actually sees: broken links, raw diagrams, unclear terms, and visible mismatches."
+  name: LLM Site Reviewer
+  tagline: "Catching bugs and contradictions in docs"
   actions:
     - theme: brand
       text: See the problem
