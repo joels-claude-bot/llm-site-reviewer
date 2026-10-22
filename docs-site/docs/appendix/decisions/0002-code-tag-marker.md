@@ -6,7 +6,7 @@ title: "ADR 0002: A unique marker for code tags"
 
 Status: Proposed (2026-07-05)
 
-This Architecture Decision Record (ADR) decides **how we mark up code with machine-readable tags**, and the small set of tools that read those tags. Today one tag exists — `//arch:<role>`, which [the code map](/concept/code-map) reads to group functions by role. The plan is to grow this into a general, eventually standalone system: a linter that checks every tag is valid, a generator that draws [Mermaid](https://mermaid.js.org/) graphs from them, and later editor support (highlighting, completions). Every one of those tools rests on a single requirement, and this record is about getting that requirement right before anything is built on top of it.
+This Architecture Decision Record (ADR) decides **how we mark up code with machine-readable tags**, and the small set of tools that read those tags. Today one tag exists — `//arch:<role>` — used to group functions by role. The plan is to grow this into a general, eventually standalone system: a linter that checks every tag is valid, a generator that draws [Mermaid](https://mermaid.js.org/) graphs from them, and later editor support (highlighting, completions). Every one of those tools rests on a single requirement, and this record is about getting that requirement right before anything is built on top of it.
 
 ## The one thing everything depends on: finding every tag
 
@@ -87,7 +87,7 @@ flowchart TD
     class Lint,Gen,Future plain
 ```
 
-Build order is left to right. **Pass A (lint)** is the first slice and the highest value: wire it into `just check` so a typo'd tag or a dangling edge fails CI. **Pass B (graph)** emits Mermaid into a managed block a generator can overwrite in place — the same "generated, never hand-copied" rule the [category reference](/spec/reference) already follows.
+Build order is left to right. **Pass A (lint)** is the first slice and the highest value: wire it into `just check` so a typo'd tag or a dangling edge fails CI. **Pass B (graph)** emits Mermaid into a managed block a generator can overwrite in place.
 
 ## Open question: where do graph edges come from?
 
@@ -95,7 +95,7 @@ Build order is left to right. **Pass A (lint)** is the first slice and the highe
 A grouping tag (`role=pure`) is safe — it describes one symbol in place. A graph *edge* names a relationship between two symbols, and that is where drift starts. Two options:
 
 - **Hand-tagged** (`@ct graph edge=a->b`) — flexible, works in any language, expresses logical links the compiler cannot see. But the comment rots the moment the code's real dependency changes and the tag does not.
-- **Derived from the code** — for Go we already walk the AST in [`codemap`](/concept/code-map); real import and call edges come for free and cannot drift, because the graph *is* the code.
+- **Derived from the code** — for Go, walking the AST can provide real import and call edges that cannot drift, because the graph *is* the code.
 
 Leaning toward derived-first, with hand-tags only for logical edges the code cannot express — the same reason golden files beat hand-written expectations. This choice sets what Pass A's lint must check (endpoint resolution) and how Pass B builds the graph, so it is the next thing to settle.
 :::

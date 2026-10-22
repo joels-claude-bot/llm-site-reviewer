@@ -1,105 +1,53 @@
 ---
-title: Approach
+title: Usage
 ---
 
-import { ReviewModeCards, ControlledPipeline, ImagePipeline } from '../../components/ReviewApproaches';
+import { ReviewModeCards, ImagePipeline } from '../../components/ReviewApproaches';
 
-# Pick the review shape
+# Choose a review mode
 
-There is no universally best harness. Choose how much context, autonomy and cost you are willing to give the model.
+The tool has two modes. Use batch when you already know which files belong in the review. Use OpenCode when an agent needs to search the repository for supporting evidence.
 
 <ReviewModeCards />
 
-:::tip Current recommendation
-Start with **controlled** for bounded, observable work. Move to **full OpenCode** when recall matters more than predictable runtime. Use **batch** only while the whole corpus genuinely fits.
-:::
+## Batch
 
-## See the four pipelines
+Batch collects the selected Markdown files and sends them together in one structured request. It has little orchestration and works well when the whole corpus fits comfortably in the model's context.
 
-The same three-page example makes the difference concrete. Blue is repository content, purple is model judgement, orange is image or search work, and green is the result.
+```bash
+GEMINI_API_KEY=<gemini-key> go run . batch examples/offsite
+```
 
-### Batch — everything enters one review
+As the corpus grows, unrelated material can crowd out details that matter. Choose a smaller set of files or use OpenCode for a repository-wide investigation.
 
-![Batch review puts all pages and extracted images into one model review](./draft-batch-example.excalidraw.svg)
+## OpenCode
 
-### Dependency — summarise and connect before reviewing
+OpenCode connects to a running local server, creates a review session, and gives the agent read-only repository tools. The agent can search and inspect evidence before returning findings in the review schema. Start the server with `just opencode-server` in one terminal, then run the review command in another.
 
-![Dependency review summarises pages, resolves their dependencies, then reviews each page with selected context](./draft-dependency-example.excalidraw.svg)
+```bash
+opencode auth login
+go run . opencode \
+  -model opencode-go/kimi-k3 \
+  -url http://127.0.0.1:4097 \
+  -timeout 8m \
+  -verbose \
+  examples/offsite/research.md
+```
 
-### Controlled — let the model choose, let Go enforce
+OpenCode can follow relevant leads that were not selected in advance. Its runtime and token use vary with the search path. The review prompt recommends limits, while the agent decides which read-only tools to use.
 
-![Controlled review uses model-planned searches and evidence selection inside code-enforced bounds](./controlled-example.excalidraw.svg)
+## Images
 
-### Full OpenCode — the agent follows its own evidence trail
-
-![Full OpenCode review repeatedly chooses bounded read-only tools before returning structured findings](./opencode-example.excalidraw.svg)
-
-## Controlled: the middle path
-
-Controlled mode keeps the useful decisions with the model while moving repetition and limits into Go.
-
-<ControlledPipeline />
-
-The full agent can follow unexpected leads. Controlled mode instead guarantees the search and read budgets. That predictability can cost recall: a weaker model once missed a known **29% versus 26.8%** contradiction that a stronger Kimi run found.
-
-## Images are evidence too
-
-Image handling applies across review modes; it is not a separate review strategy.
+Image handling is shared preprocessing for review. Local transcriptions are cached by path and content hash.
 
 <ImagePipeline />
 
 - SVG source is transcribed as text.
-- PNG, JPEG and WebP go through the configured vision path.
-- Target images are available during search planning; selected evidence images reach the final review.
+- PNG, JPEG and WebP use the configured vision path.
 - Remote HTTP(S) images are deferred.
 
-## Choose quickly
+## Structured output
 
-```mermaid
-flowchart TD
-    A{Does the full corpus fit?}
-    A -->|Yes, comfortably| B[Batch]:::blue
-    A -->|No| C{Need fixed work bounds?}
-    C -->|Yes| D[Controlled]:::green
-    C -->|No, maximise recall| E[Full OpenCode]:::orange
-    C -. small local context .-> F[Dependency]:::purple
+Both modes return the same review result shape. Batch uses the LiteLLM configuration; OpenCode asks the selected provider for JSON Schema output and validates the structured result. Provider routes can differ in their support for schema-constrained output, so use a provider tested with this mode.
 
-    classDef blue fill:#dbeafe,stroke:#2563eb,color:#172033
-    classDef green fill:#d1fae5,stroke:#059669,color:#172033
-    classDef orange fill:#ffedd5,stroke:#ea580c,color:#172033
-    classDef purple fill:#ede9fe,stroke:#7c3aed,color:#172033
-```
-
-| If you care most about… | Choose |
-|---|---|
-| Minimum machinery | **Batch** |
-| Supporting a small-context model | **Dependency** |
-| Predictable model calls and filesystem work | **Controlled** |
-| Adaptive investigation and recall | **Full OpenCode** |
-
-## Output compliance is a gate
-
-A model being clever is irrelevant if the provider does not return the required schema.
-
-:::warning Provider routes are not interchangeable
-The working hosted path uses direct OpenCode providers and a schema generated from the Go response structs. OpenRouter and LiteLLM compatibility routes have not reliably enforced the same structured output. Local Ollama is safe for no-spend integration tests, but each model still has to pass the compliance canary.
-:::
-
-Use `opencode-go/...` for the OpenCode Go subscription. `opencode/...` is the separate Zen credit route. See [ADR 0007](/appendix/decisions/0007-review-modes-and-defect-coverage) for commands, measured runs and the provider findings.
-
-## End-to-end workflow
-
-```mermaid
-flowchart LR
-    D[Markdown corpus]:::source --> M{Review mode}:::choice
-    M --> B[Batch]
-    M --> DP[Dependency]
-    M --> C[Controlled]
-    M --> O[Full OpenCode]
-    B & DP & C & O --> J[Schema-valid findings]:::result
-    J --> CI[CI / human review]:::result
-
-    classDef source fill:#dbeafe,stroke:#2563eb,color:#172033
-    classDef choice fill:#fef3c7,stroke:#d97706,color:#172033
-    classDef result fill:#d1fae5,stroke:#059669,color:#172033
-```
+For the measured OpenCode provider results and implementation history, see [ADR 0007](/appendix/decisions/0007-review-modes-and-defect-coverage).

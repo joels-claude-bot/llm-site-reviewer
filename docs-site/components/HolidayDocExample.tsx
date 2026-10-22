@@ -152,10 +152,9 @@ export default function HolidayDocExample() {
 
         {/* SIMPLER: a dense run-on of options that should be a table */}
         <p style={{ margin: '16px 0 8px', lineHeight: 1.6 }}>
-          For the room you could take the twin at £820, or the sea-view double at £910, or the budget
-          single at £640 which has no breakfast, or a hostel dorm at £210 though that is shared, or an
-          apartment at £990 with a kitchen but a three-night minimum and a cleaning fee on top, and
-          there is also a half-board option at £1,040 that includes dinner.
+          The hotel offers a twin for £820, a sea-view double for £910 or a single for £640. A hostel
+          bed costs £210; an apartment is £990 plus cleaning and has a three-night minimum. Half-board
+          is £1,040 including dinner.
         </p>
 
         {/* transfer + dead internal link + broken anchor + soft-404 + ASSUMED_JARGON + acronyms; EHIC look-alike */}

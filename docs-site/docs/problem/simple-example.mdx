@@ -1,0 +1,31 @@
+---
+title: Simple Example
+---
+
+import ReviewedDocExample from '../../components/ReviewedDocExample';
+
+# Simple Example
+
+The following is a worked example of what this tool aims to catch.
+
+As we use AI slop more and more, I've noticed it contradicts itself over time, particularly in docs.
+
+As the example shows, docs might compile and look clean, but hopefully we can pick up on the obvious contradcitions. However, using AI to catch AI errors does feel a bit of an antipattern.
+
+![spiderman](https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT9oxVzz0ij1kqfAkbyXuU1y6IFjW1Xg5wZCl0vDWiZoA)
+
+## Example
+
+Here is a small docs page that could compile cleanly:
+
+<ReviewedDocExample />
+
+The page is readable enough to inspect, but a reviewer should still flag four problems:
+
+| Finding | Why it matters | Expected behaviour |
+|---|---|---|
+| The `airport-code guide` link is dead | A reader following setup instructions hits a 404 | Return a blocking finding. |
+| The Mermaid diagram is raw source | The docs promise a flow diagram, but the reader gets code | Report from the rendered page screenshot. |
+| `GDS` and `PNR` are unexplained | A newcomer cannot follow the travel-agent example without guessing domain terms | Report as a clarity issue. |
+| The request asks for June 2026, but the booking card shows 12 July 2026 | The visible evidence contradicts the instruction | Report as a mismatch between text and rendered evidence. |
+

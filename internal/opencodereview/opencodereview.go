@@ -3,6 +3,7 @@ package opencodereview
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,7 +15,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/invopop/jsonschema"
 	"github.com/joels-claude-bot/llm-site-reviewer/internal/review"
 	"github.com/sst/opencode-sdk-go"
 	"github.com/sst/opencode-sdk-go/option"
@@ -25,6 +25,18 @@ type Config struct {
 	Evidence               []string
 	Verbose                bool
 	Output, TraceOutput    io.Writer
+}
+
+func serverAuthorization() string {
+	password := os.Getenv("OPENCODE_SERVER_PASSWORD")
+	if password == "" {
+		return ""
+	}
+	username := os.Getenv("OPENCODE_SERVER_USERNAME")
+	if username == "" {
+		username = "opencode"
+	}
+	return "Basic " + base64.StdEncoding.EncodeToString([]byte(username+":"+password))
 }
 
 type prompt struct {
@@ -61,6 +73,9 @@ func Run(ctx context.Context, cfg Config) error {
 	if cfg.TraceOutput == nil {
 		cfg.TraceOutput = io.Discard
 	}
+	if cfg.BaseURL == "" {
+		return fmt.Errorf("OpenCode server URL is required; start one with `just opencode-server`")
+	}
 	target, err := filepath.Abs(cfg.Target)
 	if err != nil {
 		return fmt.Errorf("resolve target path: %w", err)
@@ -90,7 +105,11 @@ func Run(ctx context.Context, cfg Config) error {
 			return fmt.Errorf("resolve evidence path %q: %w", p, err)
 		}
 	}
-	client := opencode.NewClient(option.WithBaseURL(cfg.BaseURL))
+	options := []option.RequestOption{option.WithBaseURL(cfg.BaseURL)}
+	if authorization := serverAuthorization(); authorization != "" {
+		options = append(options, option.WithHeader("Authorization", authorization))
+	}
+	client := opencode.NewClient(options...)
 	session, err := client.Session.New(ctx, opencode.SessionNewParams{Directory: opencode.F(workspace), Title: opencode.F("documentation review")})
 	if err != nil {
 		return fmt.Errorf("create opencode session at %s: %w", cfg.BaseURL, err)
@@ -110,7 +129,7 @@ Use other Markdown files in the repository as evidence. Find pages discussing th
 Base every finding only on repository content. Do not browse the web, run shell commands, edit files, create plans, invoke skills or subagents, or assess rendering. Ignore stylistic preferences, harmless rounding differences and claims covering different periods or scopes.
 
 Return exactly one result for the target: id 0, name %q, success false when errors are present and true otherwise. Put at most five concrete findings, ordered by importance, in that result's errors array. Use uppercase category codes such as CONTRADICTS_PAGE, WRONG_CLAIM, STALE_REF or OTHER.`, target, exploration, filepath.Base(target))
-	req := prompt{Model: model{providerID, modelID}, Format: format{"json_schema", (&jsonschema.Reflector{DoNotReference: true, ExpandedStruct: true}).Reflect(&review.MdResponse{}), 1}, Parts: []part{{"text", text}}, Tools: tools}
+	req := prompt{Model: model{providerID, modelID}, Format: format{"json_schema", review.ResponseSchema(), 1}, Parts: []part{{"text", text}}, Tools: tools}
 	if cfg.Verbose {
 		schema, e := json.Marshal(req.Format.Schema)
 		if e != nil {
@@ -138,7 +157,7 @@ Return exactly one result for the target: id 0, name %q, success false when erro
 		}
 		return fmt.Errorf("opencode returned no structured output")
 	}
-	var result review.MdResponse
+	var result review.Response
 	if err := json.Unmarshal(resp.Info.Structured, &result); err != nil {
 		return fmt.Errorf("decode structured output: %w", err)
 	}
@@ -181,13 +200,13 @@ func errorMessage(raw json.RawMessage) string {
 	}
 	return fmt.Sprintf("%s: %s", r.Name, r.Data.Message)
 }
-func validate(r review.MdResponse, name string) error {
+func validate(r review.Response, name string) error {
 	if len(r.Results) != 1 {
 		return fmt.Errorf("got %d results, want exactly 1", len(r.Results))
 	}
 	v := r.Results[0]
-	if v.Id != 0 || v.Name != name {
-		return fmt.Errorf("result identity is id=%d name=%q, want id=0 name=%q", v.Id, v.Name, name)
+	if v.ID != 0 || v.Name != name {
+		return fmt.Errorf("result identity is id=%d name=%q, want id=0 name=%q", v.ID, v.Name, name)
 	}
 	if len(v.Errors) > 5 {
 		return fmt.Errorf("got %d findings, maximum is 5", len(v.Errors))

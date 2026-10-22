@@ -1,5 +1,5 @@
-// Review documents content via sending request to LLM
-package review
+// Package batchreview reviews a corpus in one Gemini request.
+package batchreview
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/invopop/jsonschema"
-	"github.com/joels-claude-bot/llm-site-reviewer/internal/finding"
+	"github.com/joels-claude-bot/llm-site-reviewer/internal/review"
 	"github.com/voocel/litellm"
 
 	_ "embed"
@@ -36,29 +36,10 @@ func (entry MdEntry) payload() DocPayload {
 	return DocPayload{Id: entry.Id, Name: entry.FileName, Content: entry.TextContent}
 }
 
-// categorisation of content error
-type MdError struct {
-	Category finding.Category `json:"category"`
-	Notes    string           `json:"notes"`
-}
-
-// a markdown item with its content reviewed
-type MdItem struct {
-	Id      int       `json:"id"`
-	Name    string    `json:"name"`
-	Success bool      `json:"success"`
-	Errors  []MdError `json:"errors"`
-}
-
-// response from LLM about reviewing an item
-type MdResponse struct {
-	Results []MdItem `json:"results"`
-}
-
-// LiteLLMRequest reviews the docs under paths in one batch: collect the source
+// Run reviews the docs under paths in one batch: collect the source
 // files, wrap them into a prompt, send them to the model under a strict schema,
 // and print the response.
-func LiteLLMRequest(paths []string, recursive bool) error {
+func Run(paths []string, recursive bool) error {
 	client, err := NewLLMClient(ClientConfigFromEnv(ProviderGemini))
 	if err != nil {
 		return fmt.Errorf("failed to load gemini client %w", err)
@@ -104,7 +85,7 @@ func LiteLLMRequest(paths []string, recursive bool) error {
 
 func BuildSystemPrompt() (string, error) {
 
-	jsonCatalog, err := json.Marshal(finding.Catalog)
+	jsonCatalog, err := json.Marshal(review.Catalog)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal finding catalog: %v", err)
 	}
@@ -261,14 +242,7 @@ func buildBatchReviewMessages(systemPrompt string, entries []MdEntry) ([]litellm
 }
 
 func buildJsonSchema() ([]byte, error) {
-	sampleResponse := MdResponse{}
-	// Ollama's grammar converter can't follow $ref/$defs; force a flat, inline
-	// schema or it silently stops enforcing (bare strings instead of objects).
-	reflector := &jsonschema.Reflector{
-		DoNotReference: true, // inline defs, no $defs block
-		ExpandedStruct: true, // no top-level $ref wrapper
-	}
-	schema := reflector.Reflect(&sampleResponse)
+	schema := review.ResponseSchema()
 	schemaJSON, err := json.Marshal(schema)
 	if err != nil {
 		return nil, fmt.Errorf("failed to stringify schema %w", err)

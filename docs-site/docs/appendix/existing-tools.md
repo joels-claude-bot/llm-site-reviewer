@@ -35,7 +35,7 @@ together**:
 The model is a **swappable adapter**, not a hardcoded vendor. The original skill used cloud Gemini;
 the design calls for a local model. Both sit behind one interface (default: the `llm` CLI), so
 "local vs. Gemini vs. anything else" is a config change, not a rewrite. This keeps the
-[checkability rule](/spec/reference) — _verifiable things never hit an LLM_ — independent of *which*
+checkability rule — _verifiable things never hit an LLM_ — independent of *which*
 LLM.
 :::
 

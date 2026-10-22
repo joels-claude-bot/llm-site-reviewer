@@ -1,16 +1,11 @@
 [
   {
-    "text": "Problem",
-    "link": "/problem/reader-failures",
+    "text": "Examples",
+    "link": "/problem/simple-example",
     "activeMatch": "/problem/"
   },
   {
-    "text": "Spec",
-    "link": "/spec/reference",
-    "activeMatch": "/spec/"
-  },
-  {
-    "text": "Design",
+    "text": "Usage",
     "link": "/concept/approach",
     "activeMatch": "/concept/"
   },

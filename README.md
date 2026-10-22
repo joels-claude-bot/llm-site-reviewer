@@ -1,55 +1,39 @@
 # llm-site-reviewer
 
-I asked claude to generate some docs or research for me. Half an hour later I'm realising that the content doesn't match the spec, the images don't match their captions and many others.
+Review Markdown documentation for broken links, unclear writing, contradictions, and claims that do not match the supplied source material.
 
-This repo is my half-baked (learning golang / vibe coded) attempt to create an AI tool which analyses content and decides if it's consistent with itself, checks for contradictions and mistakes
+## Requirements
 
+- Go 1.26 or newer
+- A `GEMINI_API_KEY` for batch mode
+- OpenCode CLI installed and signed in for OpenCode mode
 
-## Installaion
+## Run a review
+
+Batch sends the selected files together in one model request:
+
 ```bash
-go install github.com/joels-claude-bot/llm-site-reviewer@latest
-go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6201.1 install chromium
+GEMINI_API_KEY=<gemini-key> go run . batch examples/offsite
 ```
 
-## Usage
+Start the local OpenCode API server in one terminal:
+
 ```bash
-GEMINI_API_KEY=<gemini_key_here> llm-site-reviewer batch <target-path>
+opencode auth login
+just opencode-server
 ```
 
-Rendered-page review uses the existing LiteLLM proxy configuration:
+Then run the review in another terminal:
 
 ```bash
-LITELLM_MASTER_KEY=<key> llm-site-reviewer visual https://docs.example.com/
-```
-
-Controlled review keeps filesystem work outside the model: the model chooses a
-bounded set of searches, Go executes them concurrently, the model selects up to
-five evidence pages, and a final structured call reviews the collected material.
-Local image transcriptions are cached by absolute path and SHA-256 content hash.
-Changed images use the existing LiteLLM vision path, which sends SVG source as
-text and raster formats as image bytes.
-
-```bash
-go run . controlled \
-  -root . \
-  -model opencode-go/deepseek-v4-flash \
+go run . opencode \
+  -model opencode-go/kimi-k3 \
   -url http://127.0.0.1:4097 \
-  -timeout 5m \
+  -timeout 8m \
   -verbose \
-  docs/page.md
+  examples/offsite/research.md
 ```
 
-The OpenCode integration test is skipped by default and refuses paid models.
-Run it explicitly against a local Ollama model:
+OpenCode authentication is provided by the OpenCode CLI's saved credentials. Stop the server with Ctrl+C when you are done.
 
-```bash
-OPENCODE_OLLAMA_INTEGRATION=1 \
-OPENCODE_OLLAMA_MODEL=ollama/qwen3:4b \
-OPENCODE_URL=http://127.0.0.1:4096 \
-go test ./internal/opencodereview -run TestOllamaIntegration -v
-```
-
-
-## TODO
-- [x] integrate the Playwright screenshot pass into the Go review command
-- [ ] define bounded fetching and cache identity for remote HTTP(S) Markdown images
+Install the project with `go install github.com/joels-claude-bot/llm-site-reviewer@latest`. To install the browser used by rendered-page checks, run `go run github.com/mxschmitt/playwright-go/cmd/playwright@v0.6201.1 install chromium`.
